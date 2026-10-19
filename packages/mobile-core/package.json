@@ -1,0 +1,15 @@
+{
+  "name": "@intitaxi/mobile-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lógica compartida de las apps móviles (sin dependencias nativas): atestación, sesión DPoP, cliente de API y tiempo real. Se prueba en Node contra los servicios reales. Sus pruebas de extremo a extremo están en e2e/tests/m11-mobile-core.e2e.test.ts.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@intitaxi/auth-client": "workspace:*",
+    "@intitaxi/domain": "workspace:*"
+  }
+}

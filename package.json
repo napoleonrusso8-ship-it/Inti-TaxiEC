@@ -12,7 +12,8 @@
     "test:unit": "turbo run test:unit",
     "test:integration": "turbo run test:integration --concurrency=1",
     "db:migrate": "pnpm --filter @intitaxi/db migrate",
-    "dev": "node scripts/dev.mjs"
+    "dev": "node scripts/dev.mjs",
+    "android:usb": "node scripts/android-usb.mjs"
   },
   "devDependencies": {
     "turbo": "2.11.9",

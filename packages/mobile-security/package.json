@@ -1,0 +1,18 @@
+{
+  "name": "@intitaxi/mobile-security",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Módulo nativo (Expo) de seguridad para las apps de Inti Taxi: clave DPoP en Android Keystore/StrongBox, Play Integrity, passkeys (Credential Manager), FLAG_SECURE y señales de entorno.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "expo-modules-core": "*"
+  },
+  "devDependencies": {
+    "expo-modules-core": "57.0.20"
+  }
+}

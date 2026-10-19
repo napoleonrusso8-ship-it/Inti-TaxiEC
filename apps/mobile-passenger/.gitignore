@@ -1,0 +1,8 @@
+android/
+ios/
+.expo/
+dist-export/
+*.apk
+*.aab
+*.keystore
+google-services.json

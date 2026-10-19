@@ -107,6 +107,7 @@ for (const [i, s] of SERVICES.entries()) {
 }
 console.log('\n  Simulador:  http://localhost:4000');
 if (existsSync(`${root}apps/admin-web/dist/server.js`)) console.log('  Panel admin: http://localhost:4100');
+console.log('  App Android: conecta el teléfono por USB y ejecuta `pnpm android:usb` (ver docs/modules/11-app-android-pasajero.md)');
 console.log('  Ctrl+C para detener.\n');
 const stop = () => {
   children.forEach((c) => c.kill('SIGTERM'));

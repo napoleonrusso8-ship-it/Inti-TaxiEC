@@ -24,5 +24,6 @@
 | 8. PIN, SOS, manifiesto y ECU 911 | [modules/08-seguridad-viaje-sos.md](modules/08-seguridad-viaje-sos.md) |
 | 9. Taxi Ruta | [modules/09-taxi-ruta.md](modules/09-taxi-ruta.md) |
 | 10. Panel de administración | [modules/10-panel-administracion.md](modules/10-panel-administracion.md) |
+| 11. App Android de pasajero | [modules/11-app-android-pasajero.md](modules/11-app-android-pasajero.md) |
 
-Estado: **diseño aprobado el 2026-10-19** (decisiones en `06-decisiones-pendientes.md` §0) y **los 10 módulos implementados** con pruebas. Pendiente antes de producción: revisiones legales y auditorías humanas (§3 de `06-decisiones-pendientes.md` y la sección final de cada módulo), apps móviles nativas e infraestructura como código.
+Estado: **diseño aprobado el 2026-10-19** (decisiones en `06-decisiones-pendientes.md` §0) y **los 10 módulos implementados** con pruebas, más la **app Android de pasajero**. Pendiente antes de producción: app de conductor, revisiones legales y auditorías humanas (§3 de `06-decisiones-pendientes.md` y la sección final de cada módulo) e infraestructura en la nube.

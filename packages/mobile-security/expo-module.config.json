@@ -1,0 +1,4 @@
+{
+  "platforms": ["android"],
+  "android": { "modules": ["ec.intitaxi.security.IntitaxiSecurityModule"] }
+}

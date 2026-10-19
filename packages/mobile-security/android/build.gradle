@@ -1,0 +1,24 @@
+// Módulo nativo de seguridad. Mismo esquema que los módulos oficiales de Expo SDK 57.
+// Versiones fijadas (sin rangos) para builds reproducibles.
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'ec.intitaxi.security'
+version = '0.1.0'
+
+android {
+  namespace "ec.intitaxi.security"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+}
+
+dependencies {
+  implementation 'com.google.android.play:integrity:1.4.0'
+  implementation 'androidx.credentials:credentials:1.5.0'
+  // Proveedor de passkeys de Google Play Services para Android 13 e inferiores.
+  implementation 'androidx.credentials:credentials-play-services-auth:1.5.0'
+}

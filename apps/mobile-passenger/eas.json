@@ -1,0 +1,29 @@
+{
+  "cli": { "version": ">= 16.0.0", "appVersionSource": "local" },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "env": {
+        "INTI_PROFILE": "development",
+        "EXPO_PUBLIC_ATTESTATION": "dev"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "env": {
+        "INTI_PROFILE": "preview",
+        "EXPO_PUBLIC_ATTESTATION": "play"
+      }
+    },
+    "production": {
+      "android": { "buildType": "app-bundle" },
+      "env": {
+        "INTI_PROFILE": "production",
+        "EXPO_PUBLIC_ATTESTATION": "play"
+      }
+    }
+  }
+}
