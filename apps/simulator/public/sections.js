@@ -1,9 +1,13 @@
 // Acciones del simulador por módulo. Cada módulo nuevo agrega su sección aquí.
 const phoneDefault = (d) => d.phone ?? '';
+const MOBILE = ['passenger', 'driver'];
+const firstDriver = (_d, s) => s.devices.find((x) => x.role === 'driver' && x.userId)?.userId ?? '';
+const driverId = { name: 'driverId', label: 'ID del conductor (usuario)', default: firstDriver };
 
 export const SECTIONS = [
   {
     title: 'Módulo 1 · Registro e inicio de sesión',
+    roles: MOBILE,
     items: [
       { label: 'Pedir código SMS', action: 'otp.request', hint: 'Celular ecuatoriano (09…). El SMS aparece en la Bandeja.', fields: [{ name: 'phone', label: 'Celular', placeholder: '0991234567', default: phoneDefault }] },
       { label: 'Verificar código', action: 'otp.verify', hint: 'Registra o inicia sesión. Máx. 5 intentos.', fields: [{ name: 'code', label: 'Código', source: 'otp' }] },
@@ -17,6 +21,7 @@ export const SECTIONS = [
   },
   {
     title: 'Módulo 1 · Correo, passkeys y biometría',
+    roles: MOBILE,
     items: [
       { label: 'Registrar correo', action: 'email.set', fields: [{ name: 'email', label: 'Correo', placeholder: 'ana@correo.ec' }] },
       { label: 'Abrir enlace de verificación', action: 'email.verify', fields: [{ name: 'token', label: 'Token del enlace', source: 'email-link' }] },
@@ -28,6 +33,7 @@ export const SECTIONS = [
   },
   {
     title: 'Módulo 1 · Operaciones sensibles (step-up y SIM swap)',
+    roles: MOBILE,
     items: [
       { label: 'Confirmar con passkey', action: 'stepup.passkey', hint: 'Da acr=phr y levanta el bloqueo anti SIM swap.' },
       { label: 'Confirmar con correo + Face ID (1/2)', action: 'stepup.email.options', hint: 'Envía un código al correo verificado.' },
@@ -38,6 +44,7 @@ export const SECTIONS = [
   },
   {
     title: 'Módulo 2 · Verificación biométrica (proveedor simulado tipo Veriff)',
+    roles: MOBILE,
     note: 'La app real abre el SDK del proveedor (documento + selfie con prueba de vida). Aquí tú haces de proveedor y eliges el resultado.',
     items: [
       { label: 'Leer consentimiento', action: 'consent.text', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: [{ value: 'biometric_kyc', label: 'Verificación biométrica' }, { value: 'audio_recording', label: 'Audio en emergencias' }, { value: 'trip_sharing', label: 'Compartir viajes' }, { value: 'companion_data', label: 'Datos de acompañante' }] }] },
@@ -58,6 +65,42 @@ export const SECTIONS = [
       },
       { label: 'Estado de mi verificación', action: 'kyc.status', hint: 'Sin imágenes; la cédula enmascarada.' },
       { label: 'Conductor: ¿selfie antes de conectarme?', action: 'reverify.check', roles: ['driver'] },
+    ],
+  },
+  {
+    title: 'Módulo 3 · Ser conductor (solicitud, vehículo y documentos)',
+    roles: ['driver'],
+    note: 'Requisito previo: identidad verificada (módulo 2).',
+    items: [
+      { label: 'Enviar datos de licencia', action: 'driver.apply', fields: [{ name: 'licenseNumber', label: 'Nº de licencia', default: 'L0912345675' }, { name: 'licenseCategory', label: 'Categoría', type: 'select', options: ['C', 'C1', 'D', 'E', 'B'].map((c) => ({ value: c, label: c === 'B' ? 'B (no profesional: se rechaza)' : c })) }, { name: 'licenseExpiresOn', label: 'Vence', default: '2029-12-31' }] },
+      { label: 'Registrar vehículo', action: 'vehicle.add', fields: [{ name: 'plate', label: 'Placa', default: 'GSA-1234' }, { name: 'make', label: 'Marca', default: 'Chevrolet' }, { name: 'model', label: 'Modelo', default: 'Aveo' }, { name: 'year', label: 'Año', default: '2022' }, { name: 'color', label: 'Color', default: 'Amarillo' }, { name: 'seats', label: 'Asientos para pasajeros', default: '4' }] },
+      {
+        label: 'Subir documento',
+        action: 'doc.upload',
+        hint: 'Los de vehículo se asocian al último vehículo registrado.',
+        fields: [
+          { name: 'type', label: 'Documento', type: 'select', options: [{ value: 'license', label: 'Licencia' }, { value: 'background_check', label: 'Antecedentes (PDF)' }, { value: 'registration', label: 'Matrícula' }, { value: 'insurance', label: 'SOAT/SPPAT o seguro' }] },
+          { name: 'variant', label: 'Archivo', type: 'select', options: [{ value: 'valid', label: 'Válido' }, { value: 'eicar', label: 'Con "malware" (EICAR)' }, { value: 'fake_type', label: 'PDF disfrazado de imagen' }, { value: 'pdf_js', label: 'PDF con JavaScript' }] },
+          { name: 'expiresOn', label: 'Vence', default: '2030-01-01' },
+        ],
+      },
+      { label: 'Enviar solicitud a revisión', action: 'driver.submit' },
+      { label: 'Ver mi estado de conductor', action: 'driver.profile' },
+    ],
+  },
+  {
+    title: 'Panel admin · Revisión de conductores',
+    roles: ['admin'],
+    note: 'Sesión iniciada solo con passkey. Las escrituras exigen passkey de los últimos 15 minutos.',
+    items: [
+      { label: 'Mis roles', action: 'admin.me' },
+      { label: 'Cola de revisión', action: 'admin.drivers', fields: [{ name: 'status', label: 'Estado', type: 'select', options: ['under_review', 'approved', 'rejected', 'suspended', 'applicant'].map((v) => ({ value: v, label: v })) }] },
+      { label: 'Detalle del conductor', action: 'admin.driver', fields: [driverId] },
+      { label: 'Ver documento (URL 60 s)', action: 'admin.doc.view', hint: 'Exige motivo; queda auditado.', fields: [driverId, { name: 'documentId', label: 'ID del documento' }, { name: 'reason', label: 'Motivo', default: 'Revisión de documentos de onboarding' }] },
+      { label: 'Revisar un documento', action: 'admin.doc.review', fields: [driverId, { name: 'documentId', label: 'ID del documento' }, { name: 'decision', label: 'Decisión', type: 'select', options: [{ value: 'approved', label: 'Aprobar' }, { value: 'rejected', label: 'Rechazar' }] }, { name: 'reason', label: 'Motivo (si rechaza)' }] },
+      { label: 'Aprobar todos los documentos', action: 'admin.docs.approveAll', fields: [driverId] },
+      { label: 'Decidir conductor', action: 'admin.driver.decide', fields: [driverId, { name: 'decision', label: 'Decisión', type: 'select', options: [{ value: 'approve', label: 'Aprobar' }, { value: 'reject', label: 'Rechazar' }, { value: 'suspend', label: 'Suspender' }] }, { name: 'reason', label: 'Motivo', default: 'Documentos en regla' }] },
+      { label: 'Asignar rol (super_admin)', action: 'admin.role.grant', fields: [{ name: 'userId', label: 'ID de usuario' }, { name: 'role', label: 'Rol', type: 'select', options: ['driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo'].map((v) => ({ value: v, label: v })) }] },
     ],
   },
   {

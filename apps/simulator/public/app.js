@@ -38,6 +38,13 @@ async function loadHealth() {
 }
 
 // ---------- Dispositivos ----------
+const roleSelect = document.getElementById('role-select');
+function syncRoleFields() {
+  const admin = roleSelect.value === 'admin';
+  document.querySelectorAll('.admin-only').forEach((el) => (el.hidden = !admin));
+  document.querySelectorAll('.mobile-only').forEach((el) => (el.hidden = admin));
+}
+roleSelect.addEventListener('change', syncRoleFields);
 document.getElementById('new-device').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const f = new FormData(ev.target);
@@ -46,15 +53,16 @@ document.getElementById('new-device').addEventListener('submit', async (ev) => {
   const r = await api('POST', '/sim/devices', Object.fromEntries(f));
   btn.disabled = false;
   if (r.id) state.selected = r.id;
-  else alert(`La atestación fue rechazada (${r.result?.status}). Así se comporta la app real con un teléfono comprometido.`);
+  else alert(r.result ? `La atestación fue rechazada (${r.result.status}). Así se comporta la app real con un teléfono comprometido.` : r.error);
   ev.target.reset();
+  syncRoleFields();
   await refresh();
 });
 
 function deviceSummary(d) {
   const c = d.tokenClaims;
   return h('div', { class: 'claims' },
-    h('span', { class: 'pill' }, d.role === 'driver' ? 'Conductor' : 'Pasajero'),
+    h('span', { class: 'pill' }, { driver: 'Conductor', passenger: 'Pasajero', admin: 'Panel admin' }[d.role]),
     d.integrity !== 'ok' ? h('span', { class: 'pill warn' }, 'rooteado') : null,
     d.loggedIn ? h('span', { class: 'pill ok' }, 'sesión iniciada') : h('span', { class: 'pill' }, 'sin sesión'),
     c ? h('span', { class: 'pill' }, `acr: ${c.acr.split(':').pop()}`) : null,
@@ -70,10 +78,16 @@ function renderDevices() {
   list.replaceChildren(
     ...state.devices.map((d) =>
       h('li', { class: d.id === state.selected ? 'sel' : '', onclick: () => { state.selected = d.id; renderDevices(); renderPanel(); } },
-        h('strong', {}, d.label), h('div', { class: 'meta' }, d.phone ?? 'sin número'), deviceSummary(d)),
+        h('strong', {}, d.label), h('div', { class: 'meta' }, d.phone ?? 'sin número', d.userId ? ` · usuario ${d.userId.slice(0, 8)}…` : ''), deviceSummary(d)),
     ),
   );
   if (!state.devices.length) list.append(h('li', { class: 'muted' }, 'Aún no hay dispositivos'));
+}
+
+function renderFromDevices() {
+  const sel = document.getElementById('from-device');
+  sel.replaceChildren(...state.devices.filter((d) => d.hasPasskey).map((d) => h('option', { value: d.id }, d.label)));
+  if (!sel.children.length) sel.append(h('option', { value: '' }, '— ningún dispositivo con passkey —'));
 }
 
 function lastCodeFor(device, kind) {
@@ -179,6 +193,7 @@ async function refresh() {
   state.timeline = s.timeline;
   state.inbox = inbox;
   renderDevices();
+  renderFromDevices();
   renderPanel();
   renderInbox();
   renderTimeline();
@@ -194,3 +209,4 @@ setInterval(async () => { state.inbox = await api('GET', '/sim/inbox'); renderIn
 setInterval(loadHealth, 10000);
 loadHealth();
 refresh();
+syncRoleFields();

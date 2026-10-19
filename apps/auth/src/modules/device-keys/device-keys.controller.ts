@@ -7,7 +7,7 @@ import { calculateJwkThumbprint, compactVerify, importJWK, type JWK } from 'jose
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { PG_POOL } from '../../tokens.js';
-import { TokenService } from '../tokens/token.service.js';
+import { MOBILE_CLIENTS, TokenService } from '../tokens/token.service.js';
 
 const b64u = z.string().regex(/^[A-Za-z0-9_-]+$/).max(100);
 const PublicEcJwk = z.object({ kty: z.literal('EC'), crv: z.literal('P-256'), x: b64u, y: b64u }).strict();
@@ -111,6 +111,7 @@ export class DeviceKeysController {
     // acr básico: el servidor no puede comprobar por sí mismo que la clave exige biometría
     // (eso requiere Key Attestation / App Attest). Para operaciones sensibles se pide passkey.
     const code = await this.tokens.issueAuthCode({
+      allowedClients: MOBILE_CLIENTS,
       userId: cred!.user_id,
       deviceId: device.deviceId,
       jkt: device.jkt,

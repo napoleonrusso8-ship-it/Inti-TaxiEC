@@ -75,6 +75,46 @@ export class SimDevice {
     return { status: res.status, body: parsed as T };
   }
 
+  /** Navegador del panel de administración: sin atestación móvil, solo DPoP + passkey. */
+  static async createWeb(opts: { services: Record<string, string> }) {
+    const d = new SimDevice(opts.services, 'web', 'intitaxi-admin');
+    const { privateKey, publicKey } = await generateKeyPair('ES256');
+    d.signer = {
+      publicJwk: (await exportJWK(publicKey)) as DpopSigner['publicJwk'],
+      signJws: (header, payload) => new SignJWT(payload).setProtectedHeader(header as never).sign(privateKey),
+    };
+    return d;
+  }
+
+  async loginAdmin(authenticator: SoftwareAuthenticator) {
+    const o = await this.call('auth', 'POST', '/v1/auth/admin/passkey/options', {}, { auth: false });
+    if (o.status !== 200) return o;
+    const verifier = createCodeVerifier();
+    const v = await this.call(
+      'auth',
+      'POST',
+      '/v1/auth/admin/passkey/verify',
+      { flowId: o.body.flowId, response: authenticator.assert(o.body.options), codeChallenge: await codeChallengeS256(verifier), codeChallengeMethod: 'S256' },
+      { auth: false },
+    );
+    if (v.status !== 200) return v;
+    this.passkey = authenticator;
+    return this.#exchange(v.body.code, verifier);
+  }
+
+  /** Sube un archivo según las instrucciones devueltas por la API (POST prefirmado de S3 o PUT local). */
+  async upload(instr: { method: 'POST' | 'PUT'; url: string; fields?: Record<string, string>; headers?: Record<string, string> }, data: Uint8Array, contentType: string) {
+    if (instr.method === 'PUT') {
+      const r = await fetch(instr.url, { method: 'PUT', headers: { ...instr.headers, 'Content-Type': contentType }, body: data });
+      return { status: r.status, body: null };
+    }
+    const form = new FormData();
+    for (const [k, v] of Object.entries(instr.fields ?? {})) form.append(k, v);
+    form.append('file', new Blob([data], { type: contentType }));
+    const r = await fetch(instr.url, { method: 'POST', body: form });
+    return { status: r.status, body: null };
+  }
+
   async attest(integrity: Integrity) {
     this.ticket = '';
     const n = await this.call('auth', 'POST', '/v1/attestation/nonce', undefined, { auth: false });

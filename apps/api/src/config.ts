@@ -25,6 +25,14 @@ const schema = z
     KYC_PROVIDER_RETENTION_DAYS: z.coerce.number().int().min(0).max(90).default(30),
     /** Probabilidad de re-verificación aleatoria del conductor al conectarse. */
     REVERIFY_PROBABILITY: z.coerce.number().min(0).max(1).default(0.2),
+
+    /** Documentos de conductores: "s3" en producción; "local" solo desarrollo. */
+    STORAGE_DRIVER: z.enum(['s3', 'local']).default('local'),
+    S3_BUCKET: z.string().optional(),
+    S3_KMS_KEY_ID: z.string().optional(),
+    LOCAL_STORAGE_DIR: z.string().default('.data/storage'),
+    /** Antigüedad máxima del vehículo. ⚠️ Confirmar con la ATM de Guayaquil. */
+    VEHICLE_MAX_AGE_YEARS: z.coerce.number().int().min(1).max(40).default(15),
   })
   .superRefine((c, ctx) => {
     const add = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
@@ -32,11 +40,13 @@ const schema = z
     if (!c.AUTH_JWKS_URL && !c.AUTH_JWKS_JSON) add('AUTH_JWKS_URL', 'requerida');
     if (c.KYC_PROVIDER === 'veriff' && (!c.VERIFF_API_KEY || !c.VERIFF_SHARED_SECRET)) add('VERIFF_API_KEY', 'requerida con KYC_PROVIDER=veriff');
     if (c.KYC_PROVIDER === 'mock' && !c.WEBHOOK_SECRET_KYC) add('WEBHOOK_SECRET_KYC', 'requerida con KYC_PROVIDER=mock');
+    if (c.STORAGE_DRIVER === 's3' && !c.S3_BUCKET) add('S3_BUCKET', 'requerida con STORAGE_DRIVER=s3');
     if (c.NODE_ENV !== 'production') return;
     const prod = (ok: boolean, path: string, message: string) => !ok && add(path, `producción: ${message}`);
     prod(!c.DEV_TOOLS, 'DEV_TOOLS', 'no se permiten herramientas de desarrollo');
     prod(c.KYC_PROVIDER === 'veriff', 'KYC_PROVIDER', 'no se permite el proveedor simulado');
     prod(!c.AUTH_JWKS_JSON, 'AUTH_JWKS_JSON', 'usa AUTH_JWKS_URL');
+    prod(c.STORAGE_DRIVER === 's3' && !!c.S3_KMS_KEY_ID, 'STORAGE_DRIVER', 'debe ser s3 con SSE-KMS');
   });
 
 export type AppConfig = z.infer<typeof schema>;

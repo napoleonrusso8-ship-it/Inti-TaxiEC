@@ -15,6 +15,7 @@ export class KycModule implements OnModuleInit, OnModuleDestroy {
   static forConfig(c: AppConfig): DynamicModule {
     return {
       module: KycModule,
+      global: true,
       controllers: [ConsentsController, KycController, KycWebhookController, ...(c.DEV_TOOLS ? [DevKycController] : [])],
       providers: [
         KycService,

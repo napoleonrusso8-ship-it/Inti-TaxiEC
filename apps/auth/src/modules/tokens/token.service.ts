@@ -8,7 +8,12 @@ import { SigningKeys } from '../../common/signing-keys.js';
 import type { AppConfig } from '../../config.js';
 import { CONFIG, PG_POOL } from '../../tokens.js';
 
+export const MOBILE_CLIENTS = ['intitaxi-passenger', 'intitaxi-driver'];
+export const ADMIN_CLIENT = 'intitaxi-admin';
+
 export interface AuthCodeGrant {
+  /** Clientes que pueden canjear el código (los flujos móviles no sirven para el panel y viceversa). */
+  allowedClients: string[];
   userId: string;
   deviceId: string;
   jkt: string;
@@ -62,7 +67,7 @@ export class TokenService {
   async exchangeCode(input: { code: string; codeVerifier: string; clientId: string; jkt: string }, req: AppRequest): Promise<TokenResponse> {
     this.#assertClient(input.clientId);
     const grant = await this.once.take<AuthCodeGrant>(`authcode:${sha256Base64Url(input.code)}`);
-    if (!grant) throw new OAuthError('invalid_grant');
+    if (!grant || !grant.allowedClients.includes(input.clientId)) throw new OAuthError('invalid_grant');
     const challenge = Buffer.from(sha256Base64Url(input.codeVerifier));
     if (!constantTimeEqual(challenge, Buffer.from(grant.codeChallenge)) || grant.jkt !== input.jkt) {
       await this.audit.recordSafe({ action: 'token.code_exchange', resourceType: 'user', resourceId: grant.userId, outcome: 'denied', actorUserId: grant.userId }, req);
@@ -77,9 +82,11 @@ export class TokenService {
       await c.query('UPDATE identity.devices SET user_id = $1, last_seen_at = now() WHERE id = $2', [grant.userId, grant.deviceId]);
       const { rows } = await c.query<SessionRow>(
         `INSERT INTO identity.sessions (id, user_id, device_id, client_id, dpop_jkt, current_token_hash, acr, amr, auth_time, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9), now() + make_interval(days => $10))
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9), now() + make_interval(secs => $10::float8 * 86400))
          RETURNING *, 'active' AS user_status`,
-        [sessionId, grant.userId, grant.deviceId, input.clientId, grant.jkt, sha256(refreshToken), grant.acr, grant.amr, grant.authTime, this.config.REFRESH_TOKEN_TTL_DAYS],
+        [sessionId, grant.userId, grant.deviceId, input.clientId, grant.jkt, sha256(refreshToken), grant.acr, grant.amr, grant.authTime,
+          // Sesiones del panel: 8 h absolutas. Apps móviles: REFRESH_TOKEN_TTL_DAYS.
+          input.clientId === ADMIN_CLIENT ? 8 / 24 : this.config.REFRESH_TOKEN_TTL_DAYS],
       );
       await this.audit.record({ action: 'session.create', resourceType: 'session', resourceId: sessionId, actorUserId: grant.userId, actorDeviceId: grant.deviceId, metadata: { acr: grant.acr, amr: grant.amr.join(' ') } }, req, c);
       return rows[0]!;

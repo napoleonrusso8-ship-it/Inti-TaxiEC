@@ -17,7 +17,7 @@ import { z } from 'zod';
 import type { AppConfig } from '../../config.js';
 import { CONFIG, EMAIL_SENDER, PG_POOL } from '../../tokens.js';
 import { UsersRepository } from '../account/users.repository.js';
-import { TokenService } from '../tokens/token.service.js';
+import { MOBILE_CLIENTS, TokenService } from '../tokens/token.service.js';
 
 const CHALLENGE_TTL = 300;
 const PASSKEY_AMR = ['hwk', 'user'];
@@ -143,6 +143,7 @@ export class PasskeysController {
     if (!stored || stored.jkt !== req.device!.jkt) throw new AppError(400, 'invalid_challenge', 'Reto expirado');
     const cred = await this.#verifyAssertion(input.response as unknown as AuthenticationResponseJSON, stored.challenge, req);
     const code = await this.tokens.issueAuthCode({
+      allowedClients: MOBILE_CLIENTS,
       userId: cred.user_id,
       deviceId: req.device!.deviceId,
       jkt: req.device!.jkt,

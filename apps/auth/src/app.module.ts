@@ -25,6 +25,7 @@ import { OtpService } from './modules/otp/otp.service.js';
 import { PasskeysController } from './modules/passkeys/passkeys.controller.js';
 import { SessionsController } from './modules/sessions/sessions.controller.js';
 import { EmailStepUpController } from './modules/step-up/email-step-up.controller.js';
+import { AdminLoginController } from './modules/admin/admin-login.controller.js';
 import { TokenController } from './modules/tokens/token.controller.js';
 import { TokenService } from './modules/tokens/token.service.js';
 import { CONFIG } from './tokens.js';
@@ -62,7 +63,7 @@ export class AppModule {
         CommonModule,
         AttestationModule,
       ],
-      controllers: [HealthController, TokenController, OtpController, AccountController, PasskeysController, DeviceKeysController, SessionsController, EmailStepUpController],
+      controllers: [HealthController, TokenController, OtpController, AccountController, PasskeysController, DeviceKeysController, SessionsController, EmailStepUpController, AdminLoginController],
       providers: [
         { provide: APP_FILTER, useClass: ProblemFilter },
         UsersRepository,

@@ -28,9 +28,19 @@
           <form id="new-device" class="stack">
             <label>Nombre <input name="label" placeholder="p. ej. Ana (pasajera)" /></label>
             <label>App
-              <select name="role"><option value="passenger">Pasajero</option><option value="driver">Conductor</option></select>
+              <select name="role" id="role-select"><option value="passenger">Pasajero</option><option value="driver">Conductor</option><option value="admin">Panel admin (navegador)</option></select>
             </label>
-            <label>Integridad del teléfono
+            <label class="admin-only" hidden>Rol de administración
+              <select name="adminRole">
+                <option value="super_admin">super_admin</option><option value="driver_reviewer">driver_reviewer</option><option value="sos_operator">sos_operator</option>
+                <option value="route_manager">route_manager</option><option value="support">support</option><option value="fraud_analyst">fraud_analyst</option>
+                <option value="auditor">auditor</option><option value="dpo">dpo</option>
+              </select>
+            </label>
+            <label class="admin-only" hidden>Usar la passkey de
+              <select name="fromDevice" id="from-device"></select>
+            </label>
+            <label class="mobile-only">Integridad del teléfono
               <select name="integrity">
                 <option value="ok">Íntegro (Play Integrity OK)</option>
                 <option value="basic">Rooteado / no certificado</option>

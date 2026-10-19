@@ -12,7 +12,7 @@ const schema = z
     JWT_PREVIOUS_PUBLIC_JWKS: z.string().default('{"keys":[]}'),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
     API_AUDIENCE: z.string().default('intitaxi-api'),
-    CLIENT_IDS: csv.default('intitaxi-passenger,intitaxi-driver'),
+    CLIENT_IDS: csv.default('intitaxi-passenger,intitaxi-driver,intitaxi-admin'),
 
     ATTESTATION_MODE: z.enum(['enforce', 'dev']).default('enforce'),
     ANDROID_PACKAGE_NAMES: csv.default('ec.intitaxi.passenger,ec.intitaxi.driver'),

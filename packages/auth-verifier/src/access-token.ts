@@ -16,6 +16,8 @@ export interface AuthContext {
   authTime: number;
   roles: string[];
   jkt: string;
+  /** Aplicación que obtuvo el token (intitaxi-passenger, intitaxi-driver, intitaxi-admin). */
+  clientId: string;
 }
 
 /** Un solo factor (SMS o clave del dispositivo). */
@@ -91,6 +93,7 @@ export class AccessTokenVerifier {
       authTime: Number(payload.auth_time ?? payload.iat),
       roles: Array.isArray(payload.roles) ? payload.roles.map(String) : [],
       jkt,
+      clientId: String(payload.client_id ?? ''),
     };
   }
 }

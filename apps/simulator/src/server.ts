@@ -65,6 +65,7 @@ app.get(
         label: e.label,
         role: e.role,
         phone: e.phone,
+        userId: e.userId,
         integrity: e.integrity,
         loggedIn: !!e.device.accessToken,
         hasPasskey: !!e.device.passkey,
@@ -99,7 +100,20 @@ app.get(
 app.post(
   '/sim/devices',
   wrap(async (req, res) => {
-    const { label, role = 'passenger', integrity = 'ok' } = req.body as { label?: string; role?: string; integrity?: Integrity };
+    const { label, role = 'passenger', integrity = 'ok', fromDevice, adminRole } = req.body as { label?: string; role?: string; integrity?: Integrity; fromDevice?: string; adminRole?: string };
+    if (role === 'admin') {
+      // Panel admin = navegador: sin atestación; inicia sesión con la passkey de un usuario existente.
+      const source = [...devices.values()].find((d) => d.id === fromDevice) ?? [...devices.values()].find((d) => d.device.passkey);
+      if (!source?.device.passkey || !source.userId) return res.json({ error: 'Primero crea una passkey en un dispositivo con sesión iniciada' });
+      await fetch(`${services.api}/v1/dev/admin/grant`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: source.userId, role: adminRole || 'super_admin' }) });
+      const web = await SimDevice.createWeb({ services });
+      const login = await web.loginAdmin(source.device.passkey);
+      const id = randomUUID().slice(0, 8);
+      const entry: SimEntry = { id, label: label || `Admin (${adminRole || 'super_admin'})`, role: 'admin', integrity: 'web', device: web, data: {}, userId: source.userId, phone: source.phone };
+      devices.set(id, entry);
+      record(entry.label, 'admin.login (passkey)', login);
+      return res.json({ id });
+    }
     const r = ROLES[role];
     if (!r) return res.status(400).json({ error: 'rol inválido' });
     try {

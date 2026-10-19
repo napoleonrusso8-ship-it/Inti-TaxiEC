@@ -149,7 +149,7 @@ describe('AccessTokenVerifier', () => {
 });
 
 describe('assertRecentMfa', () => {
-  const base = { userId: 'u', sessionId: 's', deviceId: 'd', amr: [], roles: [], jkt: 'j' };
+  const base = { userId: 'u', sessionId: 's', deviceId: 'd', amr: [], roles: [], jkt: 'j', clientId: 'c' };
   it('acepta MFA reciente', () => expect(() => assertRecentMfa({ ...base, acr: ACR_MFA, authTime: 1000 }, { nowSeconds: 1200 })).not.toThrow());
   it('acepta passkey como MFA', () => expect(() => assertRecentMfa({ ...base, acr: ACR_PHR, authTime: 1000 }, { nowSeconds: 1200 })).not.toThrow());
   it('rechaza MFA antiguo', () => expect(() => assertRecentMfa({ ...base, acr: ACR_MFA, authTime: 1000 }, { nowSeconds: 1400 })).toThrow());

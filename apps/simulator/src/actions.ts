@@ -1,4 +1,4 @@
-import type { HttpResult, SimDevice } from '@intitaxi/testkit';
+import { eicarAsPng, sha256Hex, tinyPdf, tinyPng, type HttpResult, type SimDevice } from '@intitaxi/testkit';
 
 export interface SimEntry {
   id: string;
@@ -6,6 +6,7 @@ export interface SimEntry {
   role: string;
   integrity: string;
   phone?: string;
+  userId?: string;
   device: SimDevice;
   /** Datos de la sesión del simulador (último challengeId, viaje activo, etc.). */
   data: Record<string, any>;
@@ -30,7 +31,7 @@ export const actions: Record<string, Handler> = {
     if (r.status === 202) e.data.challengeId = r.body.challengeId;
     return r;
   },
-  'otp.verify': (e, p) => e.device.verifyOtp(p.challengeId ?? e.data.challengeId, p.code),
+  'otp.verify': async (e, p) => withMe(e, await e.device.verifyOtp(p.challengeId ?? e.data.challengeId, p.code)),
   refresh: (e) => e.device.refresh(),
   me: (e) => e.device.call('auth', 'GET', '/v1/me'),
   sessions: (e) => e.device.call('auth', 'GET', '/v1/auth/sessions'),
@@ -47,11 +48,11 @@ export const actions: Record<string, Handler> = {
     const from = ctx.devices.get(p.fromDevice);
     const authenticator = from?.device.passkey ?? e.device.passkey;
     if (!authenticator) return { status: 409, body: { title: 'Ningún dispositivo simulado tiene passkey' } };
-    return e.device.loginWithPasskey(authenticator);
+    return withMe(e, await e.device.loginWithPasskey(authenticator));
   },
   'stepup.passkey': (e) => e.device.stepUpPasskey(),
   'devicekey.register': (e) => e.device.registerDeviceKey(),
-  'devicekey.login': (e) => e.device.loginWithDeviceKey(),
+  'devicekey.login': async (e) => withMe(e, await e.device.loginWithDeviceKey()),
   'stepup.email.options': async (e) => {
     const r = await e.device.stepUpEmailOptions();
     if (r.status === 200) e.data.stepUpChallenge = r.body.challenge;
@@ -95,9 +96,60 @@ export const actions: Record<string, Handler> = {
   'kyc.status': (e) => e.device.call('api', 'GET', '/v1/kyc/status'),
   'reverify.check': (e) => e.device.call('api', 'POST', '/v1/kyc/reverification/check'),
 
+  // ----- Módulo 3: onboarding de conductores -----
+  'driver.apply': (e, p) =>
+    e.device.call('api', 'POST', '/v1/driver/application', { licenseNumber: p.licenseNumber, licenseCategory: p.licenseCategory, licenseExpiresOn: p.licenseExpiresOn }),
+  'vehicle.add': async (e, p) => {
+    const r = await e.device.call('api', 'POST', '/v1/driver/vehicles', { plate: p.plate, make: p.make, model: p.model, year: Number(p.year), color: p.color, seats: Number(p.seats) });
+    if (r.status === 201) e.data.vehicleId = r.body.id;
+    return r;
+  },
+  'doc.upload': async (e, p) => {
+    const variants: Record<string, [Buffer, string]> = {
+      valid: p.type === 'background_check' ? [tinyPdf(), 'application/pdf'] : [tinyPng(), 'image/png'],
+      eicar: [eicarAsPng(), 'image/png'],
+      fake_type: [tinyPdf(), 'image/png'],
+      pdf_js: [tinyPdf(true), 'application/pdf'],
+    };
+    const [data, contentType] = variants[p.variant ?? 'valid']!;
+    const vehicleId = ['registration', 'insurance'].includes(p.type) ? e.data.vehicleId : undefined;
+    const u = await e.device.call('api', 'POST', '/v1/driver/documents/upload-url', { type: p.type, vehicleId, contentType, size: data.length, sha256: sha256Hex(data), expiresOn: p.expiresOn || '2030-01-01' });
+    if (u.status !== 201) return u;
+    const up = await e.device.upload(u.body.upload, data, contentType);
+    if (up.status >= 300) return { status: up.status, body: { paso: 'subida al almacenamiento' } };
+    return e.device.call('api', 'POST', `/v1/driver/documents/${u.body.documentId}/complete`);
+  },
+  'driver.submit': (e) => e.device.call('api', 'POST', '/v1/driver/application/submit'),
+  'driver.profile': (e) => e.device.call('api', 'GET', '/v1/driver/profile'),
+
+  // ----- Panel admin (módulo 3 y siguientes) -----
+  'admin.me': (e) => e.device.call('api', 'GET', '/v1/admin/me'),
+  'admin.drivers': (e, p) => e.device.call('api', 'GET', `/v1/admin/drivers?status=${p.status ?? 'under_review'}`),
+  'admin.driver': (e, p) => e.device.call('api', 'GET', `/v1/admin/drivers/${p.driverId}`),
+  'admin.doc.view': (e, p) => e.device.call('api', 'POST', `/v1/admin/drivers/${p.driverId}/documents/${p.documentId}/view-url`, { reason: p.reason }),
+  'admin.doc.review': (e, p) => e.device.call('api', 'POST', `/v1/admin/drivers/${p.driverId}/documents/${p.documentId}/review`, { decision: p.decision, reason: p.reason || undefined }),
+  'admin.docs.approveAll': async (e, p) => {
+    const d = await e.device.call('api', 'GET', `/v1/admin/drivers/${p.driverId}`);
+    if (d.status !== 200) return d;
+    const results = [];
+    for (const doc of d.body.documents) results.push((await e.device.call('api', 'POST', `/v1/admin/drivers/${p.driverId}/documents/${doc.id}/review`, { decision: 'approved' })).status);
+    return { status: 200, body: { revisados: results.length, estados: results } };
+  },
+  'admin.driver.decide': (e, p) => e.device.call('api', 'POST', `/v1/admin/drivers/${p.driverId}/decision`, { decision: p.decision, reason: p.reason }),
+  'admin.role.grant': (e, p) => e.device.call('api', 'POST', `/v1/admin/users/${p.userId}/roles`, { role: p.role }),
+
   // ----- Genérica: cualquier endpoint de cualquier servicio, firmada con DPoP -----
   call: (e, p) => e.device.call(p.service ?? 'api', p.method ?? 'GET', p.path, p.body),
 };
+
+/** Tras iniciar sesión, guarda el id de usuario (para usarlo en el panel admin y en los viajes). */
+async function withMe(e: SimEntry, r: HttpResult): Promise<HttpResult> {
+  if (r.status === 200) {
+    const me = await e.device.call('auth', 'GET', '/v1/me');
+    if (me.status === 200) e.userId = me.body.id;
+  }
+  return r;
+}
 
 export async function runAction(e: SimEntry, action: string, params: Record<string, any>, ctx: ActionContext): Promise<HttpResult> {
   const h = actions[action];

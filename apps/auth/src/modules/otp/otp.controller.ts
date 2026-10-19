@@ -6,7 +6,7 @@ import { ACR_BASIC } from '@intitaxi/auth-verifier';
 import { PG_POOL } from '../../tokens.js';
 import { UsersRepository } from '../account/users.repository.js';
 import { NewDeviceNotifier } from '../account/new-device.notifier.js';
-import { TokenService } from '../tokens/token.service.js';
+import { MOBILE_CLIENTS, TokenService } from '../tokens/token.service.js';
 import { OtpService } from './otp.service.js';
 
 const RequestBody = z.object({ phone: z.string().min(9).max(20) });
@@ -58,6 +58,7 @@ export class OtpController {
     if (!isNewUser) await this.newDevice.onSmsLogin(user, device.deviceId, req);
 
     const code = await this.tokens.issueAuthCode({
+      allowedClients: MOBILE_CLIENTS,
       userId: user.id,
       deviceId: device.deviceId,
       jkt: device.jkt,
