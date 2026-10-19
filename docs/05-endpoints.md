@@ -95,7 +95,7 @@
 | `trip.{id}.location` (↓) | Ubicación del conductor para el viaje | Participante o token de seguimiento |
 | `trip.{id}.status` (↓) | Cambios de estado | Participante |
 | `trip.{id}.chat` (↕) | Chat (sin números ni correos; filtro de PII) | Pasajero ↔ conductor del viaje |
-| `route.{routeId}.{dir}.vehicles` (↓) | Vehículos de Taxi Ruta, asientos libres y ETA | Pasajero autenticado |
+| `route.{routeId}.{dir}.vehicles` (↓) | Vehículos de Taxi Ruta, asientos libres y ETA (fase 1: consulta periódica a `GET /v1/routes/{id}/vehicles`; canal en vivo pendiente) | Pasajero autenticado |
 | `ops.incidents` (↓) | Feed de SOS para el centro de monitoreo | Rol `sos_operator` |
 
 ## 7. Pagos
@@ -132,9 +132,11 @@
 | GET | `/v1/routes/{id}` | Detalle: sentidos, polilínea, paradas ordenadas, horario, tarifa vigente ahora | Pasajero |
 | POST | `/v1/routes/{id}/quotes` | Cotización por persona (subida, bajada, asientos, hora) | Pasajero |
 | POST | `/v1/routes/{id}/bookings` ♻️🛡️ | Reservar asientos + acompañantes (§5.1) → crea un `trip` de tipo `fixed_route` | Pasajero |
-| GET | `/v1/routes/{id}/directions/{dir}/eta?stopId=` | ETA a la parada | Pasajero |
+| GET | `/v1/routes/{id}/vehicles?direction=&stopId=` | Vehículos en servicio, asientos libres y ETA a la parada (omite los que ya pasaron) | Pasajero |
+| GET | `/v1/routes/bookings/{id}` · POST `/cancel` | Ver / cancelar mi reserva (tarifa estimada → final) | Dueño de la reserva |
 | POST | `/v1/driver/routes/{id}/instances` 🛡️ | Conductor habilitado inicia un recorrido | Conductor con `driver_route_enablement` |
-| POST | `/v1/driver/route-instances/{id}/board` · `/alight` | Registrar subida (con PIN) y bajada por reserva | Conductor de la instancia |
+| GET | `/v1/driver/routes` · `/v1/driver/route-instances/current` | Rutas habilitadas · recorrido en curso | Conductor |
+| POST | `/v1/driver/route-instances/{id}/board` · `/alight` · `/finish` | Registrar subida (con PIN: **aquí se fija la tarifa**), bajada y fin del recorrido | Conductor de la instancia |
 
 ## 10. Administración (`/v1/admin`, solo vía ZTNA, passkey obligatoria, 🔐 para las acciones de escritura)
 | Método | Ruta | Descripción | Rol |
@@ -142,10 +144,10 @@
 | GET | `/v1/admin/drivers?status=` | Cola de aprobación | `driver_reviewer` |
 | GET | `/v1/admin/drivers/{id}/documents/{docId}/view-url` | URL prefirmada de 60 s (motivo obligatorio) | `driver_reviewer` |
 | POST | `/v1/admin/drivers/{id}/approve` · `/reject` · `/suspend` | Decisión | `driver_reviewer` (no sobre sí mismo) |
-| POST/DELETE | `/v1/admin/drivers/{id}/route-enablements` | Habilitar o retirar un conductor de una ruta | `route_manager` |
-| GET/POST/PATCH | `/v1/admin/routes` · `/{id}` · `/{id}/directions` · `/{id}/stops` · `/{id}/fares` · `/{id}/schedules` | CRUD de Taxi Ruta (borrador → publicar) | `route_manager` |
+| GET/POST/DELETE | `/v1/admin/routes/{id}/drivers` · `/{driverId}` | Habilitar o retirar un conductor de una ruta | `route_manager` |
+| GET/POST/PUT | `/v1/admin/routes` · `/{id}` · `/{id}/directions/{dir}/stops` · `/{id}/fares` · `/{id}/schedules` · POST `/{id}/pause` | CRUD de Taxi Ruta (borrador → publicar; una ruta activa se pausa para editarla) | `route_manager` |
 | POST | `/v1/admin/routes/{id}/validate` | Valida el orden de las paradas con la API de mapas y devuelve correcciones propuestas | `route_manager` |
-| POST | `/v1/admin/routes/{id}/publish` | Publicar (doble aprobación) | `route_manager` + segundo aprobador |
+| POST | `/v1/admin/routes/{id}/publish-request` · `/publish-decision` | Publicar (cuatro ojos: quien solicita no aprueba) | `route_manager` + segundo aprobador |
 | GET/PATCH | `/v1/admin/disputes` · `/{id}` | Disputas | `support` |
 | GET | `/v1/admin/fraud/signals` · POST `/cases` | Fraude | `fraud_analyst` |
 | GET | `/v1/admin/incidents` · `/{id}` | Centro de monitoreo SOS | `sos_operator` |

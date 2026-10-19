@@ -219,6 +219,9 @@ importers:
       '@intitaxi/db':
         specifier: workspace:*
         version: link:../packages/db
+      '@intitaxi/domain':
+        specifier: workspace:*
+        version: link:../packages/domain
       '@intitaxi/testkit':
         specifier: workspace:*
         version: link:../packages/testkit

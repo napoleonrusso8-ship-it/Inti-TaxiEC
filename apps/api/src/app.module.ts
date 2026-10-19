@@ -23,6 +23,7 @@ import { PeopleModule } from './modules/people/people.module.js';
 import { DevJobsController } from './modules/dev/dev-jobs.controller.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { ManifestModule, SosModule } from './modules/safety/safety.module.js';
+import { FixedRoutesModule } from './modules/fixed-routes/fixed-routes.module.js';
 import { AdminGuard } from './modules/admin/admin.guard.js';
 import { LocalStorage, S3Storage } from './infra/storage.js';
 import { S3Client } from '@aws-sdk/client-s3';
@@ -76,7 +77,7 @@ export class AppModule {
 
     // El servicio SOS se despliega aparte (aislamiento de fallos y credenciales) y solo carga sus módulos.
     const devStorageSecret = randomBytes(32);
-    const domain = role === 'api' ? [ManifestModule.forRole('api'), KycModule.forConfig(config), DriversModule.forConfig(config), TripsModule.forConfig(config), NotificationsModule, PeopleModule, PaymentsModule.forConfig(config)] : [ManifestModule.forRole('sos'), SosModule.forConfig(config)];
+    const domain = role === 'api' ? [ManifestModule.forRole('api'), KycModule.forConfig(config), DriversModule.forConfig(config), TripsModule.forConfig(config), NotificationsModule, PeopleModule, PaymentsModule.forConfig(config), FixedRoutesModule] : [ManifestModule.forRole('sos'), SosModule.forConfig(config)];
     return {
       module: AppModule,
       imports: [

@@ -58,7 +58,10 @@ export interface Harness {
 export async function startHarness(): Promise<Harness> {
   const config = testConfig();
   const admin = createPool({ connectionString: config.DATABASE_URL, applicationName: 'test-setup', ssl: false });
-  await admin.query('DROP SCHEMA IF EXISTS identity CASCADE; DROP SCHEMA IF EXISTS audit CASCADE; DROP TABLE IF EXISTS public.schema_migrations');
+  // BD de pruebas desechable: se borran todos los esquemas de la aplicación y se migra desde cero.
+  const { rows } = await admin.query<{ nspname: string }>(`SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg\\_%' AND nspname NOT IN ('public', 'information_schema')`);
+  for (const r of rows) await admin.query(`DROP SCHEMA "${r.nspname}" CASCADE`);
+  await admin.query('DROP TABLE IF EXISTS public.schema_migrations');
   await migrate(admin, fileURLToPath(new URL('../../../db/migrations', import.meta.url)));
   await admin.end();
   const redis = new Redis(config.REDIS_URL);

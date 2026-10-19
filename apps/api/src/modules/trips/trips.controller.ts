@@ -158,6 +158,7 @@ export class DriverTripsController {
   @Get('trips/current')
   async current(@Auth() auth: AuthContext) {
     const st = await this.presence.state(auth.userId);
+    if (st?.tripId?.startsWith('route:')) return { routeInstanceId: st.tripId.slice(6) };
     return st?.tripId ? this.trips.viewFor(auth.userId, st.tripId) : null;
   }
 

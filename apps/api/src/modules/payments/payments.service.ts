@@ -179,10 +179,24 @@ export class PaymentsService implements OnModuleInit {
     if (!p) throw new AppError(409, 'not_charged', 'El viaje aún no tiene cobro');
     const card = t.driver_id ? await this.trips.driverCard(t.driver_id, t.vehicle_id) : null;
     const fmt = (d: Date | null) => (d ? new Intl.DateTimeFormat('es-EC', { timeZone: 'America/Guayaquil', dateStyle: 'medium', timeStyle: 'short' }).format(d) : null);
+    // Taxi Ruta: tarifa por persona aplicada y la hora de subida que la fijó.
+    const route =
+      t.type === 'fixed_route'
+        ? (
+            await this.pool.query(
+              `SELECT r.code, r.name AS route, b.fare_rule_name AS "fareRule", b.unit_fare_cents AS "unitFareCents", b.seats, sb.name AS "boardingStop", sa.name AS "alightingStop", b.boarded_at
+               FROM fixed_routes.bookings b JOIN fixed_routes.instances i ON i.id = b.instance_id JOIN fixed_routes.directions d ON d.id = i.direction_id
+               JOIN fixed_routes.routes r ON r.id = d.route_id JOIN fixed_routes.stops sb ON sb.id = b.boarding_stop_id JOIN fixed_routes.stops sa ON sa.id = b.alighting_stop_id
+               WHERE b.trip_id = $1`,
+              [tripId],
+            )
+          ).rows.map(({ boarded_at, ...r }) => ({ ...r, boardedAt: fmt(boarded_at), fareFixedAt: 'boarding' }))[0] ?? null
+        : null;
     return {
       receiptId: p.id,
       trip: { id: t.id, type: t.type, start: fmt(t.started_at), end: fmt(t.ended_at), distanceKm: Math.round(t.distance_m / 100) / 10, partySize: t.party_size },
       driver: card ? { firstName: card.firstName, plate: card.vehicle?.plate } : null,
+      ...(route ? { route } : {}),
       amount: { totalCents: p.amount_cents, currency: p.currency, refundedCents: p.refunded_cents },
       payment: { method: p.method, card: p.last4 ? `${p.brand} •••• ${p.last4}` : null, status: p.status },
       timezone: 'America/Guayaquil',

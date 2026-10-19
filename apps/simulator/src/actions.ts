@@ -307,6 +307,105 @@ export const actions: Record<string, Handler> = {
   'admin.disclosure.request': (e, p) => e.device.call('sos', 'POST', '/v1/admin/authority-disclosures', { tripId: p.tripId, authority: p.authority, legalBasis: p.legalBasis }),
   'admin.disclosure.approve': (e, p) => e.device.call('sos', 'POST', `/v1/admin/authority-disclosures/${p.disclosureId}/approve`),
 
+  // ----- Módulo 9: Taxi Ruta -----
+  'routes.list': async (e) => {
+    const r = await e.device.call('api', 'GET', '/v1/routes');
+    if (r.status === 200 && r.body[0]) e.data.routeId ??= r.body[0].id;
+    return r;
+  },
+  'route.detail': async (e, p) => {
+    const r = await e.device.call('api', 'GET', `/v1/routes/${p.routeId || e.data.routeId}`);
+    if (r.status === 200) {
+      e.data.routeId = r.body.id;
+      // Resumen legible: número de parada → nombre (las acciones usan ese número).
+      return ok({ ...r.body, paradas: Object.fromEntries(r.body.directions.map((d: any) => [d.direction, d.stops.map((x: any) => `${x.seq}: ${x.name}${x.locationVerified ? '' : ' (sin verificar)'}`)])), directions: undefined });
+    }
+    return r;
+  },
+  'route.vehicles': async (e, p) => {
+    const stop = await stopAt(e, p.direction, Number(p.from));
+    return e.device.call('api', 'GET', `/v1/routes/${e.data.routeId}/vehicles?direction=${p.direction}${stop ? `&stopId=${stop}` : ''}`);
+  },
+  'route.quote': async (e, p) =>
+    e.device.call('api', 'POST', `/v1/routes/${e.data.routeId}/quotes`, { direction: p.direction, boardingStopId: await stopAt(e, p.direction, Number(p.from)), alightingStopId: await stopAt(e, p.direction, Number(p.to)), seats: Number(p.seats) }),
+  'route.book': async (e, p) => {
+    const [from, to] = [await stopAt(e, p.direction, Number(p.from)), await stopAt(e, p.direction, Number(p.to))];
+    let instanceId = p.instanceId;
+    if (!instanceId) {
+      const v = await e.device.call('api', 'GET', `/v1/routes/${e.data.routeId}/vehicles?direction=${p.direction}&stopId=${from}`);
+      instanceId = v.body?.find((x: any) => x.seatsAvailable >= Number(p.seats))?.instanceId;
+      if (!instanceId) return { status: 404, body: { title: 'No hay vehículos con asientos libres que aún no pasen por tu parada' } };
+    }
+    // Cada asiento adicional es un acompañante registrado (sección 5.1).
+    const companions = Array.from({ length: Number(p.seats) - 1 }, (_, i) => ({
+      givenNames: ['Luis', 'Rosa', 'Pedro', 'Elena'][i % 4], familyNames: 'Zambrano Ruiz', idType: 'cedula', idNumber: validCedula(), email: `acomp${i}.${Math.random().toString(36).slice(2, 6)}@correo.test`, isMinor: false,
+    }));
+    const r = await e.device.call('api', 'POST', `/v1/routes/${e.data.routeId}/bookings`, { instanceId, direction: p.direction, boardingStopId: from, alightingStopId: to, seats: Number(p.seats), paymentMethod: p.paymentMethod, companions });
+    if (r.status === 201) Object.assign(e.data, { bookingId: r.body.bookingId, tripId: r.body.tripId });
+    return r;
+  },
+  'route.booking': (e) => e.device.call('api', 'GET', `/v1/routes/bookings/${e.data.bookingId}`),
+  'route.cancel': (e) => e.device.call('api', 'POST', `/v1/routes/bookings/${e.data.bookingId}/cancel`),
+  'route.receipt': (e) => e.device.call('api', 'GET', `/v1/trips/${e.data.tripId}/receipt`),
+  'droute.list': async (e) => {
+    const r = await e.device.call('api', 'GET', '/v1/driver/routes');
+    if (r.status === 200 && r.body[0]) e.data.routeId ??= r.body[0].id;
+    return r;
+  },
+  'droute.start': async (e, p) => {
+    const vehicleId = e.data.vehicleId ?? (await e.device.call('api', 'GET', '/v1/driver/profile')).body?.vehicles?.[0]?.id;
+    const r = await e.device.call('api', 'POST', `/v1/driver/routes/${p.routeId || e.data.routeId}/instances`, { direction: p.direction, vehicleId });
+    if (r.status === 201) Object.assign(e.data, { instanceId: r.body.instanceId, routeId: p.routeId || e.data.routeId, routeDirection: p.direction });
+    return r;
+  },
+  'droute.current': (e) => e.device.call('api', 'GET', '/v1/driver/route-instances/current'),
+  'droute.board': async (e, p) => {
+    const bookingId = p.bookingId || (await e.device.call('api', 'GET', '/v1/driver/route-instances/current')).body?.bookings?.find((b: any) => b.status === 'reserved')?.id;
+    return e.device.call('api', 'POST', `/v1/driver/route-instances/${e.data.instanceId}/board`, { bookingId, pin: p.pin });
+  },
+  'droute.alight': async (e, p) => {
+    const bookingId = p.bookingId || (await e.device.call('api', 'GET', '/v1/driver/route-instances/current')).body?.bookings?.find((b: any) => b.status === 'boarded')?.id;
+    return e.device.call('api', 'POST', `/v1/driver/route-instances/${e.data.instanceId}/alight`, { bookingId });
+  },
+  'droute.finish': (e) => e.device.call('api', 'POST', `/v1/driver/route-instances/${e.data.instanceId}/finish`),
+  /** Avanza por el recorrido hasta la parada indicada, en pasos de ~80 m cada 2 s. */
+  'droute.drive': async (e, p) => {
+    const d = await e.device.call('api', 'GET', `/v1/routes/${e.data.routeId}`);
+    const stops = d.body?.directions?.find((x: any) => x.direction === (e.data.routeDirection ?? 'outbound'))?.stops ?? [];
+    const target = stops.find((x: any) => x.seq === Number(p.to));
+    if (!target) return { status: 404, body: { title: 'Parada no encontrada (¿iniciaste el recorrido?)' } };
+    const pts = [e.data.location ?? stops[0], ...stops.filter((x: any) => x.seq > (e.data.routeSeq ?? 0) && x.seq <= target.seq)];
+    const path: { lat: number; lng: number }[] = [];
+    for (let i = 1; i < pts.length; i++) {
+      const n = Math.max(1, Math.ceil(Math.hypot((pts[i].lat - pts[i - 1].lat) * 111_000, (pts[i].lng - pts[i - 1].lng) * 111_000) / 80));
+      for (let k = 1; k <= n; k++) path.push({ lat: pts[i - 1].lat + ((pts[i].lat - pts[i - 1].lat) * k) / n, lng: pts[i - 1].lng + ((pts[i].lng - pts[i - 1].lng) * k) / n });
+    }
+    clearInterval(e.data.driveTimer);
+    let i = 0;
+    e.data.driveTimer = setInterval(async () => {
+      const loc = path[i++];
+      if (!loc) return clearInterval(e.data.driveTimer);
+      e.data.location = loc;
+      await e.device.call('api', 'POST', '/v1/driver/location', { location: loc }).catch(() => {});
+    }, 2000);
+    e.data.routeSeq = target.seq;
+    return ok({ info: `Avanzando hasta "${target.name}" en ${path.length} pasos (~${path.length * 2} s)` });
+  },
+  'admin.routes': (e) => e.device.call('api', 'GET', '/v1/admin/routes'),
+  'admin.route': (e, p) => e.device.call('api', 'GET', `/v1/admin/routes/${p.routeId}`),
+  'admin.route.fares': (e, p) =>
+    e.device.call('api', 'PUT', `/v1/admin/routes/${p.routeId}/fares`, {
+      rules: [
+        { name: 'Diurna', startLocal: '06:30', endLocal: '21:00', amountCents: Number(p.day) },
+        { name: 'Nocturna', startLocal: '21:00', endLocal: '06:30', amountCents: Number(p.night) },
+      ],
+    }),
+  'admin.route.validate': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/validate`),
+  'admin.route.publishRequest': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/publish-request`),
+  'admin.route.decide': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/publish-decision`, { approve: p.approve === 'true' }),
+  'admin.route.pause': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/pause`, { reason: p.reason }),
+  'admin.route.enable': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/drivers`, { driverId: p.driverId }),
+
   // ----- Panel admin (módulo 3 y siguientes) -----
   'admin.me': (e) => e.device.call('api', 'GET', '/v1/admin/me'),
   'admin.drivers': (e, p) => e.device.call('api', 'GET', `/v1/admin/drivers?status=${p.status ?? 'under_review'}`),
@@ -326,6 +425,12 @@ export const actions: Record<string, Handler> = {
   // ----- Genérica: cualquier endpoint de cualquier servicio, firmada con DPoP -----
   call: (e, p) => e.device.call(p.service ?? 'api', p.method ?? 'GET', p.path, p.body),
 };
+
+/** Id de la parada número `seq` del sentido indicado de la ruta seleccionada. */
+async function stopAt(e: SimEntry, direction: string, seq: number): Promise<string | undefined> {
+  const d = await e.device.call('api', 'GET', `/v1/routes/${e.data.routeId}`);
+  return d.body?.directions?.find((x: any) => x.direction === direction)?.stops?.find((x: any) => x.seq === seq)?.id;
+}
 
 async function fetchJson(url: string, method: string, body?: unknown): Promise<HttpResult> {
   const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });

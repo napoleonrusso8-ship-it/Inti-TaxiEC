@@ -185,7 +185,8 @@ export class PeopleService implements OnModuleInit, OnModuleDestroy {
   }
 
   async #onStatus(e: TripStatusEvent) {
-    if (e.to === 'matching' && e.from === null) await this.#sendNotices(e.tripId);
+    // Viaje bajo demanda (null → matching) o reserva de Taxi Ruta (null → accepted).
+    if (e.from === null) await this.#sendNotices(e.tripId);
     if (e.to === 'accepted') await this.#notifyThirdPartyAccepted(e.tripId);
     if (['completed', 'cancelled', 'no_drivers'].includes(e.to)) {
       // Los enlaces de seguimiento caducan 15 min después de terminar el viaje.

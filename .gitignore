@@ -9,3 +9,4 @@ coverage/
 .turbo/
 dump.rdb
 *.log
+.data/

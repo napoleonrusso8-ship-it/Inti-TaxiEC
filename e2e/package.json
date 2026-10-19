@@ -12,6 +12,7 @@
     "@intitaxi/api": "workspace:*",
     "@intitaxi/auth": "workspace:*",
     "@intitaxi/db": "workspace:*",
+    "@intitaxi/domain": "workspace:*",
     "@intitaxi/testkit": "workspace:*",
     "@types/pg": "8.23.1",
     "ioredis": "5.11.1",
