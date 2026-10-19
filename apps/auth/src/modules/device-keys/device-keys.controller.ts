@@ -1,15 +1,11 @@
 import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import { AuditService, AppError, parseInput, tooManyRequests, AccessTokenGuard, AttestationGuard, Auth, DpopProofGuard, OneTimeStore, RateLimiter, type AppRequest } from '@intitaxi/nest-common';
 import { ACR_BASIC, type AuthContext } from '@intitaxi/auth-verifier';
 import { randomToken } from '@intitaxi/crypto';
 import { withTransaction, type Pool } from '@intitaxi/db';
 import { calculateJwkThumbprint, compactVerify, importJWK, type JWK } from 'jose';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { AuditService } from '../../common/audit.service.js';
-import { AppError, parseInput, tooManyRequests } from '../../common/errors.js';
-import { AccessTokenGuard, AttestationGuard, Auth, DpopProofGuard } from '../../common/guards.js';
-import type { AppRequest } from '../../common/request.js';
-import { OneTimeStore, RateLimiter } from '../../infra/redis-stores.js';
 import { PG_POOL } from '../../tokens.js';
 import { TokenService } from '../tokens/token.service.js';
 

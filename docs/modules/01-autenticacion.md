@@ -31,12 +31,21 @@ sequenceDiagram
   App->>Auth: POST /v1/auth/otp/verify {challengeId, code, code_challenge}  [DPoP + ticket]
   Auth-->>App: authorization code (60 s, un solo uso)
   App->>Auth: POST /oauth/token (authorization_code + code_verifier)  [DPoP]
-  Auth-->>App: access token (5 min, cnf.jkt) + refresh token rotativo (30 días)
+  Auth-->>App: access token (10 min, cnf.jkt) + refresh token rotativo (30 días)
   App->>Auth: GET /v1/me  [Authorization: DPoP <at> + prueba DPoP con ath]
 ```
 
-Métodos de inicio de sesión: **OTP SMS** (`amr=sms`, acr básico), **passkey** (`amr=hwk user`, **acr MFA**) y **clave biométrica del dispositivo** (`amr=hwk`, acr básico).
-El step-up (MFA) para operaciones sensibles se hace con passkey y dura 5 minutos.
+Métodos de inicio de sesión: **OTP SMS** (`amr=sms`, acr `basic`), **passkey** (`amr=hwk user`, acr `phr`) y **clave biométrica del dispositivo** (`amr=hwk`, acr `basic`).
+
+Niveles de autenticación (`acr`):
+
+| acr | Cómo se obtiene | Para qué sirve |
+|---|---|---|
+| `urn:intitaxi:acr:basic` | OTP SMS o clave del dispositivo | Uso normal de la app |
+| `urn:intitaxi:acr:mfa` | Step-up con **código al correo verificado + firma de la clave del dispositivo** (usuarios sin passkey; no disponible durante el bloqueo anti SIM swap) | Operaciones sensibles de pasajeros (cambio de número, etc.) |
+| `urn:intitaxi:acr:phr` | Passkey (MFA resistente al phishing) | Todo lo anterior + operaciones marcadas `@RequirePhishingResistant` (retiros y cuenta bancaria de conductores). Además levanta el bloqueo anti SIM swap |
+
+El step-up dura 5 minutos. **El token de acceso dura 10 minutos** (decisión del 2026-10-19); la sesión se renueva sola con el refresh token rotativo durante 30 días.
 
 ## 3. Endpoints implementados
 
@@ -83,7 +92,7 @@ pnpm install && pnpm build && pnpm test
 
 | # | Riesgo | Mitigación implementada | Prueba |
 |---|---|---|---|
-| R1 | **Robo del token de acceso** (logs, proxy, malware) | Tokens ligados a DPoP (`cnf.jkt`): sin la clave privada del dispositivo, el token no sirve. Se rechaza el esquema `Bearer`. Vida de 5 min | `rechaza el token… usado desde otra clave` |
+| R1 | **Robo del token de acceso** (logs, proxy, malware) | Tokens ligados a DPoP (`cnf.jkt`): sin la clave privada del dispositivo, el token no sirve. Se rechaza el esquema `Bearer`. Vida de 10 min; el logout y la revocación lo cortan al instante | `rechaza el token… usado desde otra clave` |
 | R2 | **Robo del refresh token** | Rotación en cada uso + detección de reutilización (revoca la familia y corta los tokens de acceso vigentes vía Redis) + ligado a la clave DPoP (presentarlo desde otra clave revoca la sesión) | `rota, y ante reutilización revoca…`, `…otra clave DPoP` |
 | R3 | **Repetición de peticiones** | `jti` de DPoP de un solo uso (Redis), `iat` ≤ 60 s, `htm`/`htu`/`ath` verificados; `htu` se compara con la URL pública configurada, nunca con la cabecera Host | `rechaza la repetición…`, `…cabecera Host` |
 | R4 | **Interceptación del código de autorización** | PKCE S256 + código de un solo uso de 60 s + ligado a la clave DPoP que hizo el login | `…otra clave DPoP (código interceptado)` |
@@ -105,10 +114,10 @@ pnpm install && pnpm build && pnpm test
 ### Riesgos residuales y limitaciones conocidas (honestidad ante todo)
 
 1. **App Attest (iOS) no está implementado.** `PendingAppAttestVerifier` falla cerrado: en modo `enforce` ningún iPhone puede iniciar sesión hasta implementarlo (verificación CBOR + cadena X.509 contra la *Apple App Attestation Root CA* y aserciones con contador). Lo propongo para el módulo 2, junto con el shell de la app iOS.
-2. **No hay proveedor real de SMS ni de correo.** Producción no arranca hasta integrar uno (decisión pendiente, ver la §7).
+2. **Proveedores de SMS (Infobip) y correo (Amazon SES):** adaptadores implementados y probados con dobles; falta probarlos contra las cuentas reales (credenciales en Secrets Manager).
 3. **La clave de firma de JWT está en memoria** (cargada desde Secrets Manager). Mejora prevista: firmar con una clave asimétrica de KMS para que la privada nunca salga del HSM.
 4. **El login con clave del dispositivo da acr básico.** El servidor no puede comprobar que la clave exige biometría sin Key Attestation (Android) o App Attest (iOS). Por eso no sirve como MFA.
-5. **Step-up solo con passkey.** Un usuario sin passkey no puede hacer operaciones sensibles (decisión pendiente, ver la §7).
+5. **El step-up por correo + dispositivo es más débil que la passkey** si roban el teléfono desbloqueado y el correo está abierto en él. Por eso no sirve para las operaciones marcadas como resistentes al phishing.
 6. **DAST (OWASP ZAP)** se añadirá a la CI cuando exista un entorno de staging desplegado. Las *actions* de GitHub deben fijarse por SHA antes de activar la CI en el repositorio real.
 7. Los **nonces DPoP del servidor** (`DPoP-Nonce`) no se usan; la ventana de `iat` es de 60 s más la detección de `jti` repetidos. Se pueden activar si el pentest lo recomienda.
 8. La **app móvil** (módulos nativos de Keychain/Keystore, *certificate pinning*, RASP) aún no existe como proyecto: `auth-client` define las interfaces (`DpopSigner`, `SecureStore`) que implementarán los módulos nativos.
@@ -117,8 +126,9 @@ pnpm install && pnpm build && pnpm test
 - **Pentest / revisión de código** de `apps/auth` y `packages/auth-verifier` antes del lanzamiento.
 - **Legal (LOPDP):** textos de los avisos por SMS y correo, y la base legal del registro del dispositivo y de la IP como HMAC en la auditoría.
 
-## 7. Decisiones que necesito de ti
-1. **Proveedor de SMS** para el OTP en Ecuador (Twilio, Infobip o un agregador local con conexión directa a Claro/Movistar/CNT). Recomiendo **Infobip o un agregador local** por la entrega y el costo locales, y por la posibilidad de consultar SIM swap al operador.
-2. **Proveedor de correo** transaccional: recomiendo **Amazon SES** (ya en AWS, DKIM/SPF/DMARC).
-3. **Step-up para usuarios sin passkey**: (a) solo passkey (más seguro, más fricción); o (b) permitir además *correo verificado + clave biométrica del dispositivo* (menos fricción, más débil ante un robo del teléfono desbloqueado). Recomiendo (a) para **conductores** (retiros) y (b) para **pasajeros**.
-4. **Pasajeros con Android rooteado o no certificado:** (a) bloquearlos (más seguro); o (b) permitirles usar la app con una señal de riesgo y sin tarjeta/billetera. Para conductores recomiendo bloquear siempre; para pasajeros recomiendo (b) para no excluir equipos de gama baja.
+## 7. Decisiones aplicadas (2026-10-19)
+1. SMS: **Infobip** (`SMS_PROVIDER=infobip`). Correo: **Amazon SES** (`EMAIL_PROVIDER=ses`).
+2. Step-up: conductores → passkey obligatoria para retiros (`acr=phr`); pasajeros → passkey o correo + clave del dispositivo (`acr=mfa`).
+3. Android rooteado/no certificado: **pasajeros permitidos** con la señal `device_integrity_basic_only` (sin tarjeta ni billetera, se aplica en el módulo de pagos); **conductores bloqueados**.
+4. Token de acceso: **10 minutos**.
+5. Para el simulador: `SMS_PROVIDER=devbox` / `EMAIL_PROVIDER=devbox` guardan los mensajes en Redis (prohibido en producción).

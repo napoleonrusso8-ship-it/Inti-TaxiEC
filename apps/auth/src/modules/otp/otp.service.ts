@@ -1,14 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { AuditService, AppError, tooManyRequests, ProgressiveLockout, RateLimiter, type AppRequest, type SmsSender } from '@intitaxi/nest-common';
 import { constantTimeEqual, keyedMac, type FieldCipher } from '@intitaxi/crypto';
 import { withTransaction, type Pool } from '@intitaxi/db';
 import { normalizeEcMobile } from '@intitaxi/domain';
 import { randomInt, randomUUID } from 'node:crypto';
-import { AuditService } from '../../common/audit.service.js';
-import { AppError, tooManyRequests } from '../../common/errors.js';
-import type { AppRequest } from '../../common/request.js';
 import type { AppConfig } from '../../config.js';
-import type { SmsSender } from '../../infra/notifier.js';
-import { ProgressiveLockout, RateLimiter } from '../../infra/redis-stores.js';
 import { CONFIG, FIELD_CIPHER, PG_POOL, SMS_SENDER } from '../../tokens.js';
 import { aad, UsersRepository } from '../account/users.repository.js';
 

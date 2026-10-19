@@ -1,14 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ACR_BASIC, ACR_MFA } from '@intitaxi/auth-verifier';
+import { AuditService, OAuthError, OneTimeStore, RedisSessionRevocation, type AppRequest } from '@intitaxi/nest-common';
+import { ACR_BASIC } from '@intitaxi/auth-verifier';
 import { constantTimeEqual, randomToken, sha256, sha256Base64Url } from '@intitaxi/crypto';
 import { withTransaction, type Pool, type PoolClient } from '@intitaxi/db';
 import { randomUUID } from 'node:crypto';
-import { AuditService } from '../../common/audit.service.js';
-import { OAuthError } from '../../common/errors.js';
-import type { AppRequest } from '../../common/request.js';
 import { SigningKeys } from '../../common/signing-keys.js';
 import type { AppConfig } from '../../config.js';
-import { OneTimeStore, RedisSessionRevocation } from '../../infra/redis-stores.js';
 import { CONFIG, PG_POOL } from '../../tokens.js';
 
 export interface AuthCodeGrant {
@@ -144,14 +141,14 @@ export class TokenService {
     };
   }
 
-  /** Eleva la sesión a MFA tras un step-up y devuelve un token de acceso nuevo con acr=mfa. */
-  async stepUp(sessionId: string, userId: string, amr: string[]): Promise<{ access_token: string; token_type: 'DPoP'; expires_in: number }> {
+  /** Eleva la sesión tras un step-up (acr mfa o phr) y devuelve un token de acceso nuevo. */
+  async stepUp(sessionId: string, userId: string, amr: string[], acr: string): Promise<{ access_token: string; token_type: 'DPoP'; expires_in: number }> {
     const { rows } = await this.pool.query<SessionRow>(
       `UPDATE identity.sessions s SET acr = $3, amr = $4, auth_time = now()
        FROM identity.users u
        WHERE s.id = $1 AND s.user_id = $2 AND u.id = s.user_id AND s.revoked_at IS NULL AND s.expires_at > now() AND u.status = 'active'
        RETURNING s.*, u.status AS user_status`,
-      [sessionId, userId, ACR_MFA, amr],
+      [sessionId, userId, acr, amr],
     );
     if (!rows[0]) throw new OAuthError('invalid_grant');
     return { access_token: await this.#accessToken(rows[0]), token_type: 'DPoP', expires_in: this.config.ACCESS_TOKEN_TTL_SECONDS };

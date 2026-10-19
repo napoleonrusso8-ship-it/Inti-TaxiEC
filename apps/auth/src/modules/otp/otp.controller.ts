@@ -1,11 +1,8 @@
 import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import { AuditService, AppError, parseInput, AttestationGuard, DpopProofGuard, type AppRequest } from '@intitaxi/nest-common';
 import { withTransaction, type Pool } from '@intitaxi/db';
 import { z } from 'zod';
 import { ACR_BASIC } from '@intitaxi/auth-verifier';
-import { AuditService } from '../../common/audit.service.js';
-import { AppError, parseInput } from '../../common/errors.js';
-import { AttestationGuard, DpopProofGuard } from '../../common/guards.js';
-import type { AppRequest } from '../../common/request.js';
 import { PG_POOL } from '../../tokens.js';
 import { UsersRepository } from '../account/users.repository.js';
 import { NewDeviceNotifier } from '../account/new-device.notifier.js';

@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { BlindIndex } from '@intitaxi/crypto';
 import type { Pool, PoolClient } from '@intitaxi/db';
-import { BLIND_INDEX, PG_POOL } from '../tokens.js';
+import { BLIND_INDEX, PG_POOL } from './tokens.js';
 import type { AppRequest } from './request.js';
 
 export interface AuditEntry {

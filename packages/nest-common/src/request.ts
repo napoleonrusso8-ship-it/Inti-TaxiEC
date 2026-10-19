@@ -5,10 +5,13 @@ export interface AttestedDevice {
   deviceId: string;
   platform: 'android' | 'ios';
   jkt: string;
+  /** Señales de riesgo de la atestación (p. ej. device_integrity_basic_only). */
+  flags: string[];
 }
 
 /** Petición enriquecida por los middlewares y guards. */
 export type AppRequest = Request & {
+  rawBody?: Buffer;
   requestId: string;
   auth?: AuthContext;
   dpop?: { jkt: string };

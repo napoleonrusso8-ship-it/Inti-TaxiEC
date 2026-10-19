@@ -1,8 +1,6 @@
 import { Body, Controller, Get, Header, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import { OAuthError, DpopProofGuard, type AppRequest } from '@intitaxi/nest-common';
 import { z } from 'zod';
-import { OAuthError } from '../../common/errors.js';
-import { DpopProofGuard } from '../../common/guards.js';
-import type { AppRequest } from '../../common/request.js';
 import { SigningKeys } from '../../common/signing-keys.js';
 import type { AppConfig } from '../../config.js';
 import { CONFIG } from '../../tokens.js';

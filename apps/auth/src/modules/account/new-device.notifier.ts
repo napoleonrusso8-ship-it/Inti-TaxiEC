@@ -1,8 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { AuditService, type AppRequest, type EmailSender } from '@intitaxi/nest-common';
 import type { Pool } from '@intitaxi/db';
-import { AuditService } from '../../common/audit.service.js';
-import type { AppRequest } from '../../common/request.js';
-import type { EmailSender } from '../../infra/notifier.js';
 import { EMAIL_SENDER, PG_POOL } from '../../tokens.js';
 import { UsersRepository, type UserRow } from './users.repository.js';
 

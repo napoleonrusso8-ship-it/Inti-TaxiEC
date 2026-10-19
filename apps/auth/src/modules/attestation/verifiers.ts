@@ -1,5 +1,5 @@
 import { GoogleAuth } from 'google-auth-library';
-import { AppError } from '../../common/errors.js';
+import { AppError } from '@intitaxi/nest-common';
 
 export interface AttestationResult {
   passed: boolean;
@@ -101,10 +101,20 @@ export class PendingAppAttestVerifier implements AttestationVerifier {
   }
 }
 
-/** Solo desarrollo/pruebas: acepta "dev-ok:<nonce>"; "dev-fail:<nonce>" simula un dispositivo comprometido. */
+/**
+ * Solo desarrollo/pruebas: "dev-ok:<nonce>" = dispositivo íntegro; "dev-basic:<nonce>" = Android
+ * rooteado/no certificado (aplica la misma política que Play Integrity); cualquier otro valor falla.
+ */
 export class DevAttestationVerifier implements AttestationVerifier {
-  async verify({ token, nonce }: { token: string; nonce: string }) {
+  constructor(private readonly allowBasicIntegrityPackages: string[] = []) {}
+
+  async verify({ appId, token, nonce }: { appId: string; token: string; nonce: string }) {
     if (token === `dev-ok:${nonce}`) return { passed: true, flags: ['dev_attestation'] };
+    if (token === `dev-basic:${nonce}`) {
+      return this.allowBasicIntegrityPackages.includes(appId)
+        ? { passed: true, flags: ['dev_attestation', 'device_integrity_basic_only'] }
+        : { passed: false, flags: ['device_integrity_failed'] };
+    }
     return { passed: false, flags: ['dev_simulated_failure'] };
   }
 }

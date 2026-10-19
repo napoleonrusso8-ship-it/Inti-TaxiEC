@@ -23,9 +23,6 @@ importers:
 
   apps/auth:
     dependencies:
-      '@aws-sdk/client-kms':
-        specifier: 3.1152.0
-        version: 3.1152.0
       '@intitaxi/auth-verifier':
         specifier: workspace:*
         version: link:../../packages/auth-verifier
@@ -38,6 +35,9 @@ importers:
       '@intitaxi/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@intitaxi/nest-common':
+        specifier: workspace:*
+        version: link:../../packages/nest-common
       '@nestjs/common':
         specifier: 11.2.7
         version: 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -53,9 +53,6 @@ importers:
       google-auth-library:
         specifier: 9.15.1
         version: 9.15.1
-      helmet:
-        specifier: 8.3.0
-        version: 8.3.0
       ioredis:
         specifier: 5.11.1
         version: 5.11.1
@@ -127,10 +124,57 @@ importers:
 
   packages/domain: {}
 
+  packages/nest-common:
+    dependencies:
+      '@aws-sdk/client-kms':
+        specifier: 3.1152.0
+        version: 3.1152.0
+      '@aws-sdk/client-sesv2':
+        specifier: 3.1152.0
+        version: 3.1152.0
+      '@intitaxi/auth-verifier':
+        specifier: workspace:*
+        version: link:../auth-verifier
+      '@intitaxi/crypto':
+        specifier: workspace:*
+        version: link:../crypto
+      '@intitaxi/db':
+        specifier: workspace:*
+        version: link:../db
+      '@nestjs/common':
+        specifier: 11.2.7
+        version: 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: 11.2.7
+        version: 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.7)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      helmet:
+        specifier: 8.3.0
+        version: 8.3.0
+      ioredis:
+        specifier: 5.11.1
+        version: 5.11.1
+      reflect-metadata:
+        specifier: 0.2.2
+        version: 0.2.2
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@nestjs/platform-express':
+        specifier: 11.2.7
+        version: 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.7)
+      '@types/express':
+        specifier: 5.0.6
+        version: 5.0.6
+
 packages:
 
   '@aws-sdk/client-kms@3.1152.0':
     resolution: {integrity: sha512-hQ9HoblAMUloJD+/uP0CJ/w0wAWrGNBtwJe5obXY8FzuZ8c1S1Vis0/l3lE2SMnmRi0ziY9+b2RpMr1x/O0A9A==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/client-sesv2@3.1152.0':
+    resolution: {integrity: sha512-RGHTQxW2k1w0hIzGMJnHj6us2Tdf16NwCtB6OUjCDA+g6Hn4WdpRHU5Lj0aqtn2D1+vDH/mF3RW5LL2iEDh0HQ==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.978.3':
@@ -1698,6 +1742,18 @@ snapshots:
     dependencies:
       '@aws-sdk/core': 3.978.3
       '@aws-sdk/credential-provider-node': 3.972.86
+      '@aws-sdk/types': 3.974.6
+      '@smithy/core': 3.36.0
+      '@smithy/fetch-http-handler': 5.8.0
+      '@smithy/node-http-handler': 4.12.1
+      '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
+  '@aws-sdk/client-sesv2@3.1152.0':
+    dependencies:
+      '@aws-sdk/core': 3.978.3
+      '@aws-sdk/credential-provider-node': 3.972.86
+      '@aws-sdk/signature-v4-multi-region': 3.996.48
       '@aws-sdk/types': 3.974.6
       '@smithy/core': 3.36.0
       '@smithy/fetch-http-handler': 5.8.0

@@ -9,7 +9,7 @@ import { Redis } from 'ioredis';
 import request from 'supertest';
 import { createApp } from '../src/bootstrap.js';
 import { loadConfig, type AppConfig } from '../src/config.js';
-import type { CapturingSender } from '../src/infra/notifier.js';
+import type { CapturingSender } from '@intitaxi/nest-common';
 import { EMAIL_SENDER, PG_POOL, SMS_SENDER } from '../src/tokens.js';
 import type { Pool } from '@intitaxi/db';
 
@@ -109,12 +109,14 @@ export class TestDevice {
     return createDpopProof(this.signer, { method, url: BASE + path, accessToken });
   }
 
+  appId = 'ec.intitaxi.passenger';
+
   async attest(token?: (nonce: string) => string) {
     const n = await this.h.http.post('/v1/attestation/nonce').set('DPoP', await this.proof('POST', '/v1/attestation/nonce')).expect(200);
     const res = await this.h.http
       .post('/v1/attestation/verify')
       .set('DPoP', await this.proof('POST', '/v1/attestation/verify'))
-      .send({ platform: 'android', appId: 'ec.intitaxi.passenger', nonce: n.body.nonce, token: token ? token(n.body.nonce) : `dev-ok:${n.body.nonce}` });
+      .send({ platform: 'android', appId: this.appId, nonce: n.body.nonce, token: token ? token(n.body.nonce) : `dev-ok:${n.body.nonce}` });
     if (res.status === 200) {
       this.ticket = res.body.ticket;
       this.deviceId = res.body.deviceId;

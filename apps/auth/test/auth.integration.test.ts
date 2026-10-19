@@ -56,7 +56,30 @@ describe('Atestación de la app', () => {
   });
 });
 
+describe('Política de integridad del dispositivo', () => {
+  it('permite pasajeros con Android rooteado marcando el riesgo, pero bloquea conductores', async () => {
+    const passenger = await TestDevice.create(h, false);
+    expect((await passenger.attest((n) => `dev-basic:${n}`)).status).toBe(200);
+    const driver = await TestDevice.create(h, false);
+    driver.appId = 'ec.intitaxi.driver';
+    expect((await driver.attest((n) => `dev-basic:${n}`)).status).toBe(403);
+    const { rows } = await h.pool.query('SELECT attestation_flags FROM identity.devices WHERE id = $1', [passenger.deviceId]);
+    expect(rows[0].attestation_flags).toContain('device_integrity_basic_only');
+  });
+});
+
 describe('Registro e inicio de sesión con OTP', () => {
+  it('emite tokens de acceso de 10 minutos', async () => {
+    const d = await TestDevice.create(h);
+    const p = newPhone();
+    const r = await d.requestOtp(p.local);
+    const { res, verifier } = await d.verifyOtp(r.body.challengeId, d.lastOtp(p.e164));
+    const t = await d.exchange(res.body.code, verifier);
+    expect(t.body.expires_in).toBe(600);
+    const payload = JSON.parse(Buffer.from(t.body.access_token.split('.')[1], 'base64url').toString());
+    expect(payload.exp - payload.iat).toBe(600);
+  });
+
   it('registra, emite tokens DPoP y devuelve el perfil enmascarado', async () => {
     const p = newPhone();
     const d = await TestDevice.create(h);
@@ -390,7 +413,7 @@ describe('Passkeys, step-up (MFA) y cambio de número', () => {
     expect(res.status).toBe(200);
     await d2.exchange(res.body.code, verifier);
     const me = await d2.authed('get', '/v1/me');
-    expect(me.body.session.acr).toBe('urn:intitaxi:acr:mfa');
+    expect(me.body.session.acr).toBe('urn:intitaxi:acr:phr');
     expect(me.body.phone.endsWith(p.e164.slice(-2))).toBe(true);
   });
 
@@ -440,9 +463,71 @@ describe('Passkeys, step-up (MFA) y cambio de número', () => {
     expect(res.body.title).toBe('sensitive_ops_locked');
   });
 
+  it('un step-up con passkey levanta el bloqueo anti SIM swap', async () => {
+    const { p, auth } = await userWithPasskey();
+    const newDevice = await TestDevice.create(h);
+    await newDevice.login(p.local, p.e164);
+    expect((await newDevice.authed('get', '/v1/me')).body.sensitiveOpsLockedUntil).not.toBeNull();
+    const o = await newDevice.authed('post', '/v1/auth/step-up/passkey/options');
+    const up = await newDevice.authed('post', '/v1/auth/step-up/passkey/verify', auth.assert(o.body));
+    expect(up.status).toBe(200);
+    newDevice.accessToken = up.body.access_token;
+    const me = await newDevice.authed('get', '/v1/me');
+    expect(me.body.sensitiveOpsLockedUntil).toBeNull();
+    expect(me.body.session.acr).toBe('urn:intitaxi:acr:phr');
+  });
+
   it('añadir una segunda passkey exige MFA reciente', async () => {
     const { d } = await userWithPasskey();
     expect((await d.authed('post', '/v1/auth/passkeys/registration/options')).status).toBe(401);
+  });
+});
+
+describe('Step-up con correo + clave del dispositivo (usuarios sin passkey)', () => {
+  async function setup() {
+    const p = newPhone();
+    const email = `s${phoneSeq}@correo.test`;
+    const d = await TestDevice.create(h);
+    await d.login(p.local, p.e164);
+    await d.authed('post', '/v1/me/email', { email });
+    const token = /#token=([A-Za-z0-9_-]+)/.exec(h.email.lastTo(email)!.text)![1]!;
+    await h.http.post('/v1/auth/email/verify').send({ token }).expect(204);
+    const bio = await generateKeyPair('ES256');
+    expect((await d.authed('post', '/v1/auth/device-keys', { publicJwk: await exportJWK(bio.publicKey) })).status).toBe(201);
+    return { d, p, email, bio };
+  }
+  const codeOf = (email: string) => /es (\d{6})/.exec(h.email.lastTo(email)!.text)![1]!;
+
+  it('eleva la sesión a acr=mfa con código de correo + firma del dispositivo', async () => {
+    const { d, email, bio } = await setup();
+    const o = await d.authed('post', '/v1/auth/step-up/email/options');
+    expect(o.status).toBe(200);
+    const res = await d.authed('post', '/v1/auth/step-up/email/verify', {
+      code: codeOf(email),
+      assertion: await d.signJws({ challenge: o.body.challenge }, bio.privateKey as CryptoKey),
+    });
+    expect(res.status).toBe(200);
+    d.accessToken = res.body.access_token;
+    expect((await d.authed('get', '/v1/me')).body.session).toEqual({ acr: 'urn:intitaxi:acr:mfa', amr: ['email', 'hwk'] });
+  });
+
+  it('falla con código correcto pero firma de otra clave, y el reto no se puede reintentar', async () => {
+    const { d, email } = await setup();
+    const o = await d.authed('post', '/v1/auth/step-up/email/options');
+    const other = await generateKeyPair('ES256');
+    const body = { code: codeOf(email), assertion: await d.signJws({ challenge: o.body.challenge }, other.privateKey as CryptoKey) };
+    expect((await d.authed('post', '/v1/auth/step-up/email/verify', body)).status).toBe(400);
+    expect((await d.authed('post', '/v1/auth/step-up/email/verify', body)).status).toBe(400);
+  });
+
+  it('no está disponible durante el bloqueo anti SIM swap', async () => {
+    const { p } = await setup();
+    const attacker = await TestDevice.create(h);
+    await attacker.login(p.local, p.e164);
+    const bio = await generateKeyPair('ES256');
+    expect((await attacker.authed('post', '/v1/auth/device-keys', { publicJwk: await exportJWK(bio.publicKey) })).status).toBe(201);
+    const res = await attacker.authed('post', '/v1/auth/step-up/email/options');
+    expect(res.status).toBe(403);
   });
 });
 

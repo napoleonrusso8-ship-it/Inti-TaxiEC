@@ -1,0 +1,32 @@
+{
+  "name": "@intitaxi/nest-common",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-kms": "3.1152.0",
+    "@aws-sdk/client-sesv2": "3.1152.0",
+    "@intitaxi/auth-verifier": "workspace:*",
+    "@intitaxi/crypto": "workspace:*",
+    "@intitaxi/db": "workspace:*",
+    "@nestjs/common": "11.2.7",
+    "@nestjs/core": "11.2.7",
+    "helmet": "8.3.0",
+    "ioredis": "5.11.1",
+    "reflect-metadata": "0.2.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@nestjs/platform-express": "11.2.7"
+  }
+}

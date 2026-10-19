@@ -1,17 +1,12 @@
 import { Body, Controller, Get, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import { AuditService, AppError, parseInput, tooManyRequests, AccessTokenGuard, AttestationGuard, Auth, RecentMfaGuard, RateLimiter, type AppRequest, type EmailSender, type SmsSender } from '@intitaxi/nest-common';
 import { maskEmail, maskPhone, randomToken, sha256, type FieldCipher } from '@intitaxi/crypto';
 import { withTransaction, type Pool } from '@intitaxi/db';
 import { normalizeEmail } from '@intitaxi/domain';
 import type { AuthContext } from '@intitaxi/auth-verifier';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { AuditService } from '../../common/audit.service.js';
-import { AppError, parseInput, tooManyRequests } from '../../common/errors.js';
-import { AccessTokenGuard, AttestationGuard, Auth, RecentMfaGuard } from '../../common/guards.js';
-import type { AppRequest } from '../../common/request.js';
 import type { AppConfig } from '../../config.js';
-import type { EmailSender, SmsSender } from '../../infra/notifier.js';
-import { RateLimiter } from '../../infra/redis-stores.js';
 import { CONFIG, EMAIL_SENDER, FIELD_CIPHER, PG_POOL, SMS_SENDER } from '../../tokens.js';
 import { OtpService } from '../otp/otp.service.js';
 import { TokenService } from '../tokens/token.service.js';

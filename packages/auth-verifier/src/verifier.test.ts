@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWK, type CryptoKey } from 'jose';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { AccessTokenVerifier, ACR_MFA, assertRecentMfa, AuthError, verifyDpopProof, type DpopReplayStore } from './index.js';
+import { AccessTokenVerifier, ACR_MFA, ACR_PHR, assertRecentMfa, AuthError, verifyDpopProof, type DpopReplayStore } from './index.js';
 
 class MemReplay implements DpopReplayStore {
   seen = new Set<string>();
@@ -150,7 +150,12 @@ describe('AccessTokenVerifier', () => {
 
 describe('assertRecentMfa', () => {
   const base = { userId: 'u', sessionId: 's', deviceId: 'd', amr: [], roles: [], jkt: 'j' };
-  it('acepta MFA reciente', () => expect(() => assertRecentMfa({ ...base, acr: ACR_MFA, authTime: 1000 }, 300, 1200)).not.toThrow());
-  it('rechaza MFA antiguo', () => expect(() => assertRecentMfa({ ...base, acr: ACR_MFA, authTime: 1000 }, 300, 1400)).toThrow());
-  it('rechaza sin MFA', () => expect(() => assertRecentMfa({ ...base, acr: 'urn:intitaxi:acr:basic', authTime: 1000 }, 300, 1000)).toThrow());
+  it('acepta MFA reciente', () => expect(() => assertRecentMfa({ ...base, acr: ACR_MFA, authTime: 1000 }, { nowSeconds: 1200 })).not.toThrow());
+  it('acepta passkey como MFA', () => expect(() => assertRecentMfa({ ...base, acr: ACR_PHR, authTime: 1000 }, { nowSeconds: 1200 })).not.toThrow());
+  it('rechaza MFA antiguo', () => expect(() => assertRecentMfa({ ...base, acr: ACR_MFA, authTime: 1000 }, { nowSeconds: 1400 })).toThrow());
+  it('rechaza sin MFA', () => expect(() => assertRecentMfa({ ...base, acr: 'urn:intitaxi:acr:basic', authTime: 1000 }, { nowSeconds: 1000 })).toThrow());
+  it('exige passkey cuando se pide resistencia al phishing', () => {
+    expect(() => assertRecentMfa({ ...base, acr: ACR_MFA, authTime: 1000 }, { nowSeconds: 1000, phishingResistant: true })).toThrow();
+    expect(() => assertRecentMfa({ ...base, acr: ACR_PHR, authTime: 1000 }, { nowSeconds: 1000, phishingResistant: true })).not.toThrow();
+  });
 });

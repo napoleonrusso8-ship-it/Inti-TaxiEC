@@ -18,8 +18,12 @@ export interface AuthContext {
   jkt: string;
 }
 
+/** Un solo factor (SMS o clave del dispositivo). */
 export const ACR_BASIC = 'urn:intitaxi:acr:basic';
+/** Dos factores de canales distintos (p. ej. correo verificado + clave ligada al dispositivo). */
 export const ACR_MFA = 'urn:intitaxi:acr:mfa';
+/** MFA resistente al phishing (passkey con verificación de usuario). Nivel más alto. */
+export const ACR_PHR = 'urn:intitaxi:acr:phr';
 
 export interface AccessTokenVerifierOptions {
   issuer: string;
@@ -91,9 +95,17 @@ export class AccessTokenVerifier {
   }
 }
 
-/** Comprueba que la autenticación fuerte (MFA) sea reciente para operaciones sensibles. */
-export function assertRecentMfa(ctx: AuthContext, maxAgeSeconds = 300, nowSeconds = Math.floor(Date.now() / 1000)) {
-  if (ctx.acr !== ACR_MFA || nowSeconds - ctx.authTime > maxAgeSeconds) {
+/**
+ * Comprueba que la autenticación fuerte (MFA) sea reciente para operaciones sensibles.
+ * Con `phishingResistant` solo se acepta passkey (ACR_PHR).
+ */
+export function assertRecentMfa(
+  ctx: AuthContext,
+  opts: { maxAgeSeconds?: number; phishingResistant?: boolean; nowSeconds?: number } = {},
+) {
+  const accepted = opts.phishingResistant ? [ACR_PHR] : [ACR_MFA, ACR_PHR];
+  const now = opts.nowSeconds ?? Math.floor(Date.now() / 1000);
+  if (!accepted.includes(ctx.acr) || now - ctx.authTime > (opts.maxAgeSeconds ?? 300)) {
     throw new AuthError('insufficient_user_authentication', 'Se requiere verificación reciente (step-up)');
   }
 }

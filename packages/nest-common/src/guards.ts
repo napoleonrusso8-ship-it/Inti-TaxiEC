@@ -1,19 +1,19 @@
-import { type CanActivate, createParamDecorator, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
+import { type CanActivate, createParamDecorator, type ExecutionContext, Inject, Injectable, SetMetadata } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { AccessTokenVerifier, assertRecentMfa, type AuthContext, verifyDpopProof } from '@intitaxi/auth-verifier';
 import { sha256Base64Url } from '@intitaxi/crypto';
 import type { Redis } from 'ioredis';
-import type { AppConfig } from '../config.js';
-import { RedisDpopReplayStore } from '../infra/redis-stores.js';
-import { CONFIG, REDIS } from '../tokens.js';
 import { AppError } from './errors.js';
+import { RedisDpopReplayStore } from './redis-stores.js';
 import { publicUrl, type AppRequest, type AttestedDevice } from './request.js';
+import { PUBLIC_BASE_URL, REDIS } from './tokens.js';
 
 /** Exige token de acceso DPoP válido. */
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
   constructor(
     @Inject(AccessTokenVerifier) private readonly verifier: AccessTokenVerifier,
-    @Inject(CONFIG) private readonly config: AppConfig,
+    @Inject(PUBLIC_BASE_URL) private readonly baseUrl: string,
   ) {}
 
   async canActivate(ctx: ExecutionContext) {
@@ -22,7 +22,7 @@ export class AccessTokenGuard implements CanActivate {
       authorization: req.header('authorization'),
       dpop: req.header('dpop'),
       method: req.method,
-      url: publicUrl(this.config.PUBLIC_BASE_URL, req),
+      url: publicUrl(this.baseUrl, req),
     });
     return true;
   }
@@ -33,7 +33,7 @@ export class AccessTokenGuard implements CanActivate {
 export class DpopProofGuard implements CanActivate {
   constructor(
     @Inject(RedisDpopReplayStore) private readonly replay: RedisDpopReplayStore,
-    @Inject(CONFIG) private readonly config: AppConfig,
+    @Inject(PUBLIC_BASE_URL) private readonly baseUrl: string,
   ) {}
 
   async canActivate(ctx: ExecutionContext) {
@@ -41,7 +41,7 @@ export class DpopProofGuard implements CanActivate {
     const { jkt } = await verifyDpopProof({
       proof: req.header('dpop'),
       method: req.method,
-      url: publicUrl(this.config.PUBLIC_BASE_URL, req),
+      url: publicUrl(this.baseUrl, req),
       replayStore: this.replay,
     });
     req.dpop = { jkt };
@@ -64,24 +64,30 @@ export class AttestationGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<AppRequest>();
     const ticket = req.header('x-attestation-ticket');
     const jkt = req.auth?.jkt ?? req.dpop?.jkt;
-    if (!ticket || !jkt) throw new AppError(401, 'attestation_required', 'Se requiere atestación de la app');
+    const deny = () => new AppError(401, 'attestation_required', 'Se requiere atestación de la app');
+    if (!ticket || !jkt) throw deny();
     const raw = await this.redis.get(attestationTicketKey(ticket));
     const device = raw ? (JSON.parse(raw) as AttestedDevice) : null;
-    if (!device || device.jkt !== jkt) throw new AppError(401, 'attestation_required', 'Se requiere atestación de la app');
-    if (req.auth?.deviceId && req.auth.deviceId !== device.deviceId) {
-      throw new AppError(401, 'attestation_required', 'Se requiere atestación de la app');
-    }
-    req.device = device;
+    if (!device || device.jkt !== jkt) throw deny();
+    if (req.auth?.deviceId && req.auth.deviceId !== device.deviceId) throw deny();
+    req.device = { ...device, flags: device.flags ?? [] };
     return true;
   }
 }
 
+const PHR_KEY = 'intitaxi:require-phr';
+/** Marca un endpoint para exigir MFA resistente al phishing (passkey), p. ej. retiros de conductores. */
+export const RequirePhishingResistant = () => SetMetadata(PHR_KEY, true);
+
 /** Exige MFA reciente (≤ 5 min) para operaciones sensibles. Debe ir después de AccessTokenGuard. */
 @Injectable()
 export class RecentMfaGuard implements CanActivate {
+  constructor(@Inject(Reflector) private readonly reflector: Reflector) {}
+
   canActivate(ctx: ExecutionContext) {
     const req = ctx.switchToHttp().getRequest<AppRequest>();
-    assertRecentMfa(req.auth!);
+    const phishingResistant = this.reflector.getAllAndOverride<boolean>(PHR_KEY, [ctx.getHandler(), ctx.getClass()]) ?? false;
+    assertRecentMfa(req.auth!, { phishingResistant });
     return true;
   }
 }
@@ -90,4 +96,10 @@ export const Auth = createParamDecorator((_: unknown, ctx: ExecutionContext): Au
   const auth = ctx.switchToHttp().getRequest<AppRequest>().auth;
   if (!auth) throw new AppError(401, 'invalid_token', 'No autenticado');
   return auth;
+});
+
+export const Device = createParamDecorator((_: unknown, ctx: ExecutionContext): AttestedDevice => {
+  const device = ctx.switchToHttp().getRequest<AppRequest>().device;
+  if (!device) throw new AppError(401, 'attestation_required', 'Se requiere atestación de la app');
+  return device;
 });

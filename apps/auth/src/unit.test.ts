@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
-import { lockoutSecondsFor } from './infra/redis-stores.js';
+import { lockoutSecondsFor } from '@intitaxi/nest-common';
 import { evaluatePlayIntegrity, type PlayIntegrityPayload, type PlayIntegrityPolicy } from './modules/attestation/verifiers.js';
 
 const now = 1_760_000_000_000;

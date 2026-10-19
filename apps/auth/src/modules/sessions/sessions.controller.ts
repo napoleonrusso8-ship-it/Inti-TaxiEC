@@ -1,10 +1,7 @@
 import { Controller, Delete, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { AuditService, AppError, AccessTokenGuard, Auth, type AppRequest } from '@intitaxi/nest-common';
 import type { AuthContext } from '@intitaxi/auth-verifier';
 import type { Pool } from '@intitaxi/db';
-import { AuditService } from '../../common/audit.service.js';
-import { AppError } from '../../common/errors.js';
-import { AccessTokenGuard, Auth } from '../../common/guards.js';
-import type { AppRequest } from '../../common/request.js';
 import { PG_POOL } from '../../tokens.js';
 import { TokenService } from '../tokens/token.service.js';
 

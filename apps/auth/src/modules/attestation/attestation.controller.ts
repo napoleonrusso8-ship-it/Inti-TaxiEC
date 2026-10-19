@@ -1,14 +1,10 @@
 import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import { AuditService, AppError, parseInput, tooManyRequests, ATTESTATION_TICKET_TTL, attestationTicketKey, DpopProofGuard, OneTimeStore, RateLimiter, type AppRequest, type AttestedDevice } from '@intitaxi/nest-common';
 import { randomToken } from '@intitaxi/crypto';
 import type { Pool } from '@intitaxi/db';
 import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import { z } from 'zod';
-import { AuditService } from '../../common/audit.service.js';
-import { AppError, parseInput, tooManyRequests } from '../../common/errors.js';
-import { ATTESTATION_TICKET_TTL, attestationTicketKey, DpopProofGuard } from '../../common/guards.js';
-import type { AppRequest, AttestedDevice } from '../../common/request.js';
-import { OneTimeStore, RateLimiter } from '../../infra/redis-stores.js';
 import { ATTESTATION_VERIFIERS, PG_POOL, REDIS } from '../../tokens.js';
 import type { AttestationVerifier } from './verifiers.js';
 
@@ -76,7 +72,7 @@ export class AttestationController {
     }
 
     const ticket = randomToken(32);
-    const device: AttestedDevice = { deviceId, platform: input.platform, jkt };
+    const device: AttestedDevice = { deviceId, platform: input.platform, jkt, flags: result.flags };
     await this.redis.set(attestationTicketKey(ticket), JSON.stringify(device), 'EX', ATTESTATION_TICKET_TTL);
     return { ticket, deviceId, expiresIn: ATTESTATION_TICKET_TTL };
   }

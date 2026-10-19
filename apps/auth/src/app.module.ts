@@ -1,13 +1,19 @@
 import { type DynamicModule, Global, Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { AccessTokenVerifier } from '@intitaxi/auth-verifier';
-import { AuditService } from './common/audit.service.js';
-import { AccessTokenGuard, AttestationGuard, DpopProofGuard, RecentMfaGuard } from './common/guards.js';
-import { ProblemFilter } from './common/problem.filter.js';
+import {
+  AccessTokenGuard,
+  AttestationGuard,
+  AuditService,
+  DpopProofGuard,
+  InfraModule,
+  ProblemFilter,
+  RecentMfaGuard,
+  RedisDpopReplayStore,
+  RedisSessionRevocation,
+} from '@intitaxi/nest-common';
 import { SigningKeys } from './common/signing-keys.js';
 import type { AppConfig } from './config.js';
-import { InfraModule } from './infra/infra.module.js';
-import { RedisDpopReplayStore, RedisSessionRevocation } from './infra/redis-stores.js';
 import { AccountController } from './modules/account/account.controller.js';
 import { NewDeviceNotifier } from './modules/account/new-device.notifier.js';
 import { UsersRepository } from './modules/account/users.repository.js';
@@ -18,6 +24,7 @@ import { OtpController } from './modules/otp/otp.controller.js';
 import { OtpService } from './modules/otp/otp.service.js';
 import { PasskeysController } from './modules/passkeys/passkeys.controller.js';
 import { SessionsController } from './modules/sessions/sessions.controller.js';
+import { EmailStepUpController } from './modules/step-up/email-step-up.controller.js';
 import { TokenController } from './modules/tokens/token.controller.js';
 import { TokenService } from './modules/tokens/token.service.js';
 import { CONFIG } from './tokens.js';
@@ -49,8 +56,13 @@ export class AppModule {
     const configModule: DynamicModule = { module: class ConfigModule {}, global: true, providers: [{ provide: CONFIG, useValue: config }], exports: [CONFIG] };
     return {
       module: AppModule,
-      imports: [configModule, InfraModule, CommonModule, AttestationModule],
-      controllers: [HealthController, TokenController, OtpController, AccountController, PasskeysController, DeviceKeysController, SessionsController],
+      imports: [
+        configModule,
+        InfraModule.forRoot(config, { applicationName: 'intitaxi-auth', cipherContext: { service: 'auth', purpose: 'pii' } }),
+        CommonModule,
+        AttestationModule,
+      ],
+      controllers: [HealthController, TokenController, OtpController, AccountController, PasskeysController, DeviceKeysController, SessionsController, EmailStepUpController],
       providers: [
         { provide: APP_FILTER, useClass: ProblemFilter },
         UsersRepository,

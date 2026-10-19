@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, Inject, Post, Req, UseGuards } from '@nestjs/common';
+import { AuditService, AppError, parseInput, AccessTokenGuard, AttestationGuard, Auth, DpopProofGuard, OneTimeStore, type AppRequest, type EmailSender } from '@intitaxi/nest-common';
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -8,18 +9,12 @@ import {
   type AuthenticatorTransportFuture,
   type RegistrationResponseJSON,
 } from '@simplewebauthn/server';
-import { ACR_MFA, assertRecentMfa, type AuthContext } from '@intitaxi/auth-verifier';
+import { ACR_PHR, assertRecentMfa, type AuthContext } from '@intitaxi/auth-verifier';
 import { maskPhone, randomToken } from '@intitaxi/crypto';
 import type { Pool } from '@intitaxi/db';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { AuditService } from '../../common/audit.service.js';
-import { AppError, parseInput } from '../../common/errors.js';
-import { AccessTokenGuard, AttestationGuard, Auth, DpopProofGuard } from '../../common/guards.js';
-import type { AppRequest } from '../../common/request.js';
 import type { AppConfig } from '../../config.js';
-import type { EmailSender } from '../../infra/notifier.js';
-import { OneTimeStore } from '../../infra/redis-stores.js';
 import { CONFIG, EMAIL_SENDER, PG_POOL } from '../../tokens.js';
 import { UsersRepository } from '../account/users.repository.js';
 import { TokenService } from '../tokens/token.service.js';
@@ -152,7 +147,7 @@ export class PasskeysController {
       deviceId: req.device!.deviceId,
       jkt: req.device!.jkt,
       codeChallenge: input.codeChallenge,
-      acr: ACR_MFA,
+      acr: ACR_PHR,
       amr: PASSKEY_AMR,
       authTime: Math.floor(Date.now() / 1000),
     });
@@ -188,8 +183,13 @@ export class PasskeysController {
       await this.audit.record({ action: 'stepup.passkey', resourceType: 'session', resourceId: auth.sessionId, outcome: 'denied' }, req);
       throw new AppError(400, 'passkey_invalid', 'No se pudo verificar la passkey');
     }
-    const tokens = await this.tokens.stepUp(auth.sessionId, auth.userId, PASSKEY_AMR);
-    await this.audit.record({ action: 'stepup.passkey', resourceType: 'session', resourceId: auth.sessionId }, req);
+    const tokens = await this.tokens.stepUp(auth.sessionId, auth.userId, PASSKEY_AMR, ACR_PHR);
+    // Una passkey registrada antes del bloqueo prueba que no es un atacante con la SIM: se levanta el bloqueo anti SIM swap.
+    const lifted = await this.pool.query(
+      `UPDATE identity.users SET sensitive_ops_locked_until = NULL, updated_at = now() WHERE id = $1 AND sensitive_ops_locked_until > now()`,
+      [auth.userId],
+    );
+    await this.audit.record({ action: 'stepup.passkey', resourceType: 'session', resourceId: auth.sessionId, metadata: { lock_lifted: (lifted.rowCount ?? 0) > 0 } }, req);
     return tokens;
   }
 
