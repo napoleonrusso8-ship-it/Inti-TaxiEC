@@ -46,3 +46,15 @@ export function eicarAsPng(): Buffer {
 
 export const sha256Hex = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 
+
+/** Cédula ecuatoriana sintética VÁLIDA (dígito verificador módulo 10). Solo para pruebas. */
+export function validCedula(province = 9): string {
+  const nine = String(province).padStart(2, '0') + String(Math.floor(Math.random() * 6)) + String(Math.floor(Math.random() * 1e6)).padStart(6, '0');
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    let p = Number(nine[i]) * (i % 2 === 0 ? 2 : 1);
+    if (p > 9) p -= 9;
+    sum += p;
+  }
+  return nine + ((10 - (sum % 10)) % 10);
+}

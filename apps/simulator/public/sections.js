@@ -105,6 +105,30 @@ export const SECTIONS = [
     ],
   },
   {
+    title: 'Módulo 5 · Acompañantes y viajes para terceros',
+    roles: ['passenger'],
+    note: 'Primero "Cotizar" (módulo 4). Las cédulas de prueba se generan válidas (módulo 10).',
+    items: [
+      {
+        label: 'Confirmar viaje con grupo',
+        action: 'trip.request.group',
+        fields: [
+          { name: 'adults', label: 'Acompañantes adultos', type: 'select', options: [0, 1, 2, 3].map((n) => ({ value: n, label: String(n) })) },
+          { name: 'minor', label: 'Con un menor', type: 'select', options: [{ value: 'false', label: 'No' }, { value: 'true', label: 'Sí' }] },
+          { name: 'thirdParty', label: 'Es para otra persona', type: 'select', options: [{ value: 'false', label: 'No, viajo yo' }, { value: 'true', label: 'Sí (Carmen, sin app)' }] },
+          { name: 'thirdPhone', label: 'Celular del tercero', default: '0987654321' },
+          { name: 'badCedula', label: 'Probar cédula inválida', type: 'select', options: [{ value: 'false', label: 'No' }, { value: 'true', label: 'Sí' }] },
+        ],
+      },
+      { label: 'Ver quiénes viajan', action: 'trip.parties', hint: 'Cédulas enmascaradas; el acceso se audita.' },
+      { label: 'Guardar contacto frecuente', action: 'companion.save', hint: 'El acompañante debe confirmar por correo.', fields: [{ name: 'givenNames', label: 'Nombres', default: 'Sofía' }, { name: 'familyNames', label: 'Apellidos', default: 'Mendoza' }, { name: 'email', label: 'Correo', default: 'sofia@correo.test' }, { name: 'alias', label: 'Alias', default: 'Mi prima' }] },
+      { label: 'Mis contactos frecuentes', action: 'companion.list' },
+      { label: 'Titular: ver mis datos (enlace del correo)', action: 'subject.view', fields: [{ name: 'token', label: 'Token del enlace', source: 'subject-link' }] },
+      { label: 'Titular: confirmar / dar consentimiento', action: 'subject.confirm', fields: [{ name: 'token', label: 'Token del enlace', source: 'subject-link' }] },
+      { label: 'Titular: pedir eliminación', action: 'subject.delete', fields: [{ name: 'token', label: 'Token del enlace', source: 'subject-link' }] },
+    ],
+  },
+  {
     title: 'Módulo 4 · Manejar',
     roles: ['driver'],
     note: 'Antes: conductor aprobado y, si toca, selfie de re-verificación (módulo 2).',

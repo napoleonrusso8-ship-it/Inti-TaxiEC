@@ -51,6 +51,12 @@ const schema = z
     MATCHING_OFFER_TTL_SECONDS: z.coerce.number().int().min(5).max(60).default(15),
     MATCHING_RADIUS_M: z.coerce.number().int().min(500).max(20000).default(5000),
     MATCHING_MAX_RADIUS_M: z.coerce.number().int().min(500).max(30000).default(8000),
+    /** Retención del manifiesto y datos de acompañantes/terceros (decisión aprobada: 180 días). */
+    MANIFEST_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(180),
+    /** Página pública de seguimiento para terceros sin app. */
+    TRACKING_BASE_URL: z.string().url().default('https://seguir.intitaxi.ec'),
+    /** Portal del titular de datos (aviso LOPDP, consentimiento de acompañantes). */
+    SUBJECT_PORTAL_URL: z.string().url().default('https://privacidad.intitaxi.ec'),
     MATCHING_SWEEP_MS: z.coerce.number().int().min(200).max(10000).default(1000),
   })
   .superRefine((c, ctx) => {

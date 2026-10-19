@@ -122,11 +122,18 @@ export async function startedTrip(s: Stack, opts: { passenger?: { d: SimDevice; 
   const p = opts.passenger ?? (await s.loggedIn());
   const t = await requestTrip(p.d, opts.extra ?? {});
   if (t.status !== 201) throw new Error(`trip ${t.status} ${JSON.stringify(t.body)}`);
-  const offers = await waitFor(() => drv.d.call('api', 'GET', '/v1/driver/offers'), (r) => r.body.length > 0);
-  await drv.d.call('api', 'POST', `/v1/driver/offers/${offers.body[0].offerId}/accept`);
+  await drv.d.call('api', 'POST', `/v1/driver/offers/${await offerFor(drv.d, t.body.id)}/accept`);
   await drv.d.call('api', 'POST', `/v1/driver/trips/${t.body.id}/arrived`);
   const pin = await p.d.call('api', 'GET', `/v1/trips/${t.body.id}/pin`);
   const st = await drv.d.call('api', 'POST', `/v1/driver/trips/${t.body.id}/start`, { pin: pin.body.pin });
   if (st.status !== 200) throw new Error(`start ${st.status} ${JSON.stringify(st.body)}`);
   return { drv, p, tripId: t.body.id as string };
+}
+
+/** Espera la oferta de UN viaje concreto (otras pruebas pueden tener viajes buscando cerca). */
+export async function offerFor(d: SimDevice, tripId: string, ms = 8000): Promise<string> {
+  const r = await waitFor(() => d.call('api', 'GET', '/v1/driver/offers'), (x) => x.body.some((o: { tripId: string }) => o.tripId === tripId), ms);
+  const o = r.body.find((x: { tripId: string }) => x.tripId === tripId);
+  if (!o) throw new Error(`sin oferta para ${tripId}`);
+  return o.offerId;
 }

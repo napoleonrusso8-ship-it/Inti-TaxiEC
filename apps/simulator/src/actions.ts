@@ -1,4 +1,4 @@
-import { eicarAsPng, sha256Hex, tinyPdf, tinyPng, type HttpResult, type SimDevice } from '@intitaxi/testkit';
+import { eicarAsPng, sha256Hex, tinyPdf, tinyPng, validCedula, type HttpResult, type SimDevice } from '@intitaxi/testkit';
 
 export interface SimEntry {
   id: string;
@@ -148,6 +148,26 @@ export const actions: Record<string, Handler> = {
     if (r.status === 201) e.data.tripId = r.body.id;
     return r;
   },
+  'trip.request.group': async (e, p) => {
+    if (!e.data.quoteId) return { status: 409, body: { title: 'Primero cotiza' } };
+    const names = ['Luis', 'Rosa', 'Pedro', 'Carmen', 'Andrés', 'Valeria', 'Diego'];
+    const companions: Record<string, unknown>[] = Array.from({ length: Number(p.adults ?? 0) }, (_, i) => ({
+      givenNames: names[i % names.length], familyNames: 'Zambrano Ruiz', idType: 'cedula', idNumber: p.badCedula === 'true' && i === 0 ? '0912345678' : validCedula(),
+      email: `${names[i % names.length]!.toLowerCase()}.${Math.random().toString(36).slice(2, 6)}@correo.test`, isMinor: false,
+    }));
+    if (p.minor === 'true') companions.push({ givenNames: 'Mateo', familyNames: 'Zambrano', idType: 'none', isMinor: true, guardian: p.thirdParty === 'true' ? 'primary' : 'requester' });
+    const forThirdParty = p.thirdParty === 'true'
+      ? { givenNames: 'Carmen', familyNames: 'Vera Loor', idType: 'cedula', idNumber: validCedula(), email: `carmen.${Math.random().toString(36).slice(2, 6)}@correo.test`, phone: p.thirdPhone || '0987654321' }
+      : undefined;
+    return actions['trip.request']!(e, { paymentMethod: 'cash', extra: { companions, forThirdParty } }, undefined as never);
+  },
+  'trip.parties': (e) => e.device.call('api', 'GET', `/v1/trips/${e.data.tripId}/parties`),
+  'companion.save': (e, p) =>
+    e.device.call('api', 'POST', '/v1/companions', { givenNames: p.givenNames, familyNames: p.familyNames, idType: 'cedula', idNumber: validCedula(), email: p.email, isMinor: false, alias: p.alias }),
+  'companion.list': (e) => e.device.call('api', 'GET', '/v1/companions'),
+  'subject.view': async (_e, p, ctx) => fetchJson(`${ctx.services.api}/v1/privacy/subject/${p.token}`, 'GET'),
+  'subject.confirm': async (_e, p, ctx) => fetchJson(`${ctx.services.api}/v1/privacy/subject/${p.token}/confirm`, 'POST'),
+  'subject.delete': async (_e, p, ctx) => fetchJson(`${ctx.services.api}/v1/privacy/subject/${p.token}/delete`, 'POST'),
   'trip.view': (e, p) => e.device.call('api', 'GET', `/v1/trips/${p.tripId || e.data.tripId}`),
   'trip.pin': (e) => e.device.call('api', 'GET', `/v1/trips/${e.data.tripId}/pin`),
   'trip.cancel': (e) => e.device.call('api', 'POST', `/v1/trips/${e.data.tripId}/cancel`, { reason: 'Cancelado desde el simulador' }),
@@ -199,6 +219,12 @@ export const actions: Record<string, Handler> = {
   // ----- Genérica: cualquier endpoint de cualquier servicio, firmada con DPoP -----
   call: (e, p) => e.device.call(p.service ?? 'api', p.method ?? 'GET', p.path, p.body),
 };
+
+async function fetchJson(url: string, method: string): Promise<HttpResult> {
+  const r = await fetch(url, { method });
+  const t = await r.text();
+  return { status: r.status, body: t ? JSON.parse(t) : null };
+}
 
 /** Tras iniciar sesión, guarda el id de usuario (para usarlo en el panel admin y en los viajes). */
 async function withMe(e: SimEntry, r: HttpResult): Promise<HttpResult> {

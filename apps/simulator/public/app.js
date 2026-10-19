@@ -91,7 +91,7 @@ function renderFromDevices() {
 }
 
 function lastCodeFor(device, kind) {
-  const re = kind === 'email-link' ? /#token=([A-Za-z0-9_-]+)/ : /(\d{6})/;
+  const re = kind === 'email-link' ? /#token=([A-Za-z0-9_-]+)/ : kind === 'subject-link' ? /\/p\/([A-Za-z0-9_-]{43})/ : /(\d{6})/;
   for (const m of state.inbox) {
     if (kind === 'otp' && m.channel !== 'sms') continue;
     if (kind !== 'otp' && m.channel !== 'email') continue;
@@ -128,7 +128,7 @@ function actionCard(d, it) {
     if (f.type === 'textarea' && f.default) input.value = typeof f.default === 'function' ? f.default(d, state) : f.default;
     inputs[f.name] = input;
     const fill = f.source
-      ? h('button', { type: 'button', onclick: () => { input.value = lastCodeFor(d, f.source); } }, f.source === 'email-link' ? 'Usar enlace del último correo' : 'Usar último código')
+      ? h('button', { type: 'button', onclick: () => { input.value = lastCodeFor(d, f.source); } }, f.source === 'otp' || f.source === 'otp-email' ? 'Usar último código' : 'Usar enlace del último correo')
       : null;
     return h('label', {}, f.label, input, fill);
   });

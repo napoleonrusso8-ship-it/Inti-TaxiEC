@@ -30,6 +30,7 @@ import { SessionsController } from './modules/sessions/sessions.controller.js';
 import { EmailStepUpController } from './modules/step-up/email-step-up.controller.js';
 import { AdminLoginController } from './modules/admin/admin-login.controller.js';
 import { InternalContactController, MASKED_CALLS, MockMaskedCallProvider } from './modules/internal/contact.controller.js';
+import { InternalNotifyController } from './modules/internal/notify.controller.js';
 import type { Redis } from 'ioredis';
 import { TokenController } from './modules/tokens/token.controller.js';
 import { TokenService } from './modules/tokens/token.service.js';
@@ -68,7 +69,7 @@ export class AppModule {
         CommonModule,
         AttestationModule,
       ],
-      controllers: [HealthController, TokenController, OtpController, AccountController, PasskeysController, DeviceKeysController, SessionsController, EmailStepUpController, AdminLoginController, InternalContactController],
+      controllers: [HealthController, TokenController, OtpController, AccountController, PasskeysController, DeviceKeysController, SessionsController, EmailStepUpController, AdminLoginController, InternalContactController, InternalNotifyController],
       providers: [
         { provide: APP_FILTER, useClass: ProblemFilter },
         { provide: INTERNAL_SECRET, useValue: Buffer.from(config.INTERNAL_SIGNING_SECRET, 'base64') },

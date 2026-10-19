@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { adminSession, idemKey, MALECON, MALL_DEL_SOL, onlineDriver, requestTrip, waitFor } from '../src/flows.js';
+import { adminSession, idemKey, MALECON, MALL_DEL_SOL, offerFor, onlineDriver, requestTrip, waitFor } from '../src/flows.js';
 import { Stack } from '../src/stack.js';
 
 const s = new Stack();
@@ -58,9 +58,10 @@ describe('Ciclo completo del viaje', () => {
     const t = await requestTrip(p.d, {}, at, MALECON);
     expect(t.status).toBe(201);
     expect(t.body.status).toBe('matching');
-    const offers = await waitFor(() => drv.d.call('api', 'GET', '/v1/driver/offers'), (r) => r.body.length > 0);
-    expect(offers.body[0]).toMatchObject({ tripId: t.body.id, fareCents: t.body.fare.quotedCents });
-    expect((await drv.d.call('api', 'POST', `/v1/driver/offers/${offers.body[0].offerId}/accept`)).body.status).toBe('accepted');
+    const offerId = await offerFor(drv.d, t.body.id);
+    const offers = await drv.d.call('api', 'GET', '/v1/driver/offers');
+    expect(offers.body.find((o: { offerId: string }) => o.offerId === offerId)).toMatchObject({ tripId: t.body.id, fareCents: t.body.fare.quotedCents });
+    expect((await drv.d.call('api', 'POST', `/v1/driver/offers/${offerId}/accept`)).body.status).toBe('accepted');
 
     const view = await p.d.call('api', 'GET', `/v1/trips/${t.body.id}`);
     expect(view.body.driver).toMatchObject({ firstName: 'Juan', identityVerified: true, vehicle: { plate: drv.plate } });
@@ -88,8 +89,7 @@ describe('Ciclo completo del viaje', () => {
     const drv = await onlineDriver(s, at, 4, reviewer);
     const p = await s.loggedIn();
     const t = await requestTrip(p.d, {}, at, MALECON);
-    const o = await waitFor(() => drv.d.call('api', 'GET', '/v1/driver/offers'), (r) => r.body.length > 0);
-    await drv.d.call('api', 'POST', `/v1/driver/offers/${o.body[0].offerId}/accept`);
+    await drv.d.call('api', 'POST', `/v1/driver/offers/${await offerFor(drv.d, t.body.id)}/accept`);
     await drv.d.call('api', 'POST', `/v1/driver/trips/${t.body.id}/arrived`);
     const real = (await p.d.call('api', 'GET', `/v1/trips/${t.body.id}/pin`)).body.pin;
     const wrong = real === '1111' ? '2222' : '1111';
@@ -102,10 +102,9 @@ describe('Ciclo completo del viaje', () => {
     const lazy = await onlineDriver(s, at, 4, reviewer);
     const p = await s.loggedIn();
     const t = await requestTrip(p.d, {}, at, MALECON);
-    await waitFor(() => lazy.d.call('api', 'GET', '/v1/driver/offers'), (r) => r.body.length > 0);
+    await offerFor(lazy.d, t.body.id);
     const next = await onlineDriver(s, { lat: at.lat + 0.005, lng: at.lng }, 4, reviewer);
-    const o = await waitFor(() => next.d.call('api', 'GET', '/v1/driver/offers'), (r) => r.body.length > 0, 12000);
-    expect(o.body[0].tripId).toBe(t.body.id);
+    expect(await offerFor(next.d, t.body.id, 12000)).toBeTruthy();
   });
 
   it('idempotencia: repetir la solicitud con la misma clave no crea otro viaje', async () => {
@@ -131,11 +130,11 @@ describe('Autorización y privacidad', () => {
     const t = await requestTrip(p.d, {}, at, MALECON);
     expect((await stranger.d.call('api', 'GET', `/v1/trips/${t.body.id}`)).status).toBe(404);
     expect((await stranger.d.call('api', 'GET', `/v1/trips/${t.body.id}/pin`)).status).toBe(404);
-    const o = await waitFor(() => drv.d.call('api', 'GET', '/v1/driver/offers'), (r) => r.body.length > 0);
+    const offerId = await offerFor(drv.d, t.body.id);
     const other = await onlineDriver(s, { lat: at.lat - 0.01, lng: at.lng }, 4, reviewer);
-    expect((await other.d.call('api', 'POST', `/v1/driver/offers/${o.body[0].offerId}/accept`)).status).toBe(404);
+    expect((await other.d.call('api', 'POST', `/v1/driver/offers/${offerId}/accept`)).status).toBe(404);
     // El conductor asignado no puede ver el PIN
-    await drv.d.call('api', 'POST', `/v1/driver/offers/${o.body[0].offerId}/accept`);
+    await drv.d.call('api', 'POST', `/v1/driver/offers/${offerId}/accept`);
     expect((await drv.d.call('api', 'GET', `/v1/trips/${t.body.id}/pin`)).status).toBe(404);
   });
 
@@ -162,8 +161,7 @@ describe('Autorización y privacidad', () => {
     const p = await s.loggedIn();
     const t = await requestTrip(p.d, {}, at, MALECON);
     expect((await p.d.call('api', 'POST', `/v1/trips/${t.body.id}/contact-session`)).status).toBe(409);
-    const o = await waitFor(() => drv.d.call('api', 'GET', '/v1/driver/offers'), (r) => r.body.length > 0);
-    await drv.d.call('api', 'POST', `/v1/driver/offers/${o.body[0].offerId}/accept`);
+    await drv.d.call('api', 'POST', `/v1/driver/offers/${await offerFor(drv.d, t.body.id)}/accept`);
     const c = await p.d.call('api', 'POST', `/v1/trips/${t.body.id}/contact-session`);
     expect(c.status).toBe(201);
     expect(c.body.proxyNumber).toMatch(/^\+5934\d{7}$/);
