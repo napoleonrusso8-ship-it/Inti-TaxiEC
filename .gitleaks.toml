@@ -1,0 +1,7 @@
+title = "Inti Taxi — gitleaks"
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Archivos de ejemplo sin secretos reales"
+paths = ['''\.env\.example$''']

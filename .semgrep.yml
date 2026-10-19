@@ -1,0 +1,19 @@
+rules:
+  - id: no-string-concat-sql
+    languages: [typescript]
+    severity: ERROR
+    message: "SQL construido por concatenación/plantilla: usa parámetros ($1, $2…)"
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query(`...${$X}...`, ...)
+          - pattern: $DB.query("..." + $X, ...)
+  - id: no-math-random-for-secrets
+    languages: [typescript]
+    severity: ERROR
+    message: "Math.random no es criptográficamente seguro; usa crypto.randomInt/randomBytes"
+    pattern: Math.random()
+  - id: no-jwt-decode-without-verify
+    languages: [typescript]
+    severity: ERROR
+    message: "No decodifiques JWT sin verificar la firma"
+    pattern: decodeJwt(...)

@@ -1,0 +1,65 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env: { POSTGRES_PASSWORD: ci-only, POSTGRES_DB: intitaxi_test }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7.2-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgres://postgres:ci-only@localhost:5432/intitaxi_test
+      REDIS_URL: redis://localhost:6379/1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  security:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Escaneo de secretos (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: SAST (Semgrep)
+        run: pipx run semgrep scan --config p/owasp-top-ten --config p/typescript --config .semgrep.yml --error
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - name: SCA (dependencias)
+        run: pnpm install --frozen-lockfile && pnpm audit --audit-level high
+      - name: Escaneo de IaC y Dockerfiles (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with: { scan-type: config, scan-ref: ., exit-code: "1", severity: "HIGH,CRITICAL" }
+
+  container:
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f infra/docker/auth.Dockerfile -t intitaxi-auth:${{ github.sha }} .
+      - name: Escaneo de la imagen (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with: { image-ref: "intitaxi-auth:${{ github.sha }}", exit-code: "1", severity: "HIGH,CRITICAL", ignore-unfixed: true }

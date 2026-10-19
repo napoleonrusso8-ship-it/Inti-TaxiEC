@@ -1,7 +1,7 @@
 # 03 — Modelo de datos
 
 > Estado: **APROBADO (2026-10-19)**.
-> PostgreSQL 16 + PostGIS. Un esquema por módulo (`identity`, `kyc`, `drivers`, `trips`, `companions`, `manifest`, `payments`, `fixed_routes`, `audit`, `privacy`). Todos los IDs son `uuid` v7 (ordenables, no enumerables). Las marcas de tiempo son `timestamptz` en UTC; la conversión a `America/Guayaquil` ocurre solo en la lógica de negocio (tarifas) y en la presentación.
+> PostgreSQL 16 + PostGIS. Un esquema por módulo (`identity`, `kyc`, `drivers`, `trips`, `companions`, `manifest`, `payments`, `fixed_routes`, `audit`, `privacy`). Todos los IDs son `uuid` aleatorios (v4, no enumerables). Las marcas de tiempo son `timestamptz` en UTC; la conversión a `America/Guayaquil` ocurre solo en la lógica de negocio (tarifas) y en la presentación.
 
 **Convenciones de datos personales**
 - `*_enc bytea`: cifrado de campo AES-256-GCM con envelope encryption (DEK cifrada por CMK de KMS).

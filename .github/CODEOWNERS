@@ -1,0 +1,6 @@
+# Revisión obligatoria del equipo de seguridad en las áreas críticas.
+/apps/auth/            @intitaxi/security
+/packages/crypto/      @intitaxi/security
+/packages/auth-verifier/ @intitaxi/security
+/db/migrations/        @intitaxi/security @intitaxi/backend
+/infra/                @intitaxi/security @intitaxi/platform
