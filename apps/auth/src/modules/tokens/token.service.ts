@@ -42,6 +42,7 @@ interface SessionRow {
   expires_at: Date;
   revoked_at: Date | null;
   user_status: string;
+  sensitive_ops_locked_until?: Date | null;
 }
 
 const AUTH_CODE_TTL = 60;
@@ -77,16 +78,16 @@ export class TokenService {
     const refreshToken = randomToken(32);
     const sessionId = randomUUID();
     const session = await withTransaction(this.pool, async (c) => {
-      const u = await c.query<{ status: string }>('SELECT status FROM identity.users WHERE id = $1 FOR SHARE', [grant.userId]);
+      const u = await c.query<{ status: string; sensitive_ops_locked_until: Date | null }>('SELECT status, sensitive_ops_locked_until FROM identity.users WHERE id = $1 FOR SHARE', [grant.userId]);
       if (u.rows[0]?.status !== 'active') throw new OAuthError('invalid_grant');
       await c.query('UPDATE identity.devices SET user_id = $1, last_seen_at = now() WHERE id = $2', [grant.userId, grant.deviceId]);
       const { rows } = await c.query<SessionRow>(
         `INSERT INTO identity.sessions (id, user_id, device_id, client_id, dpop_jkt, current_token_hash, acr, amr, auth_time, expires_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, to_timestamp($9), now() + make_interval(secs => $10::float8 * 86400))
-         RETURNING *, 'active' AS user_status`,
+         RETURNING *, 'active' AS user_status, $11::timestamptz AS sensitive_ops_locked_until`,
         [sessionId, grant.userId, grant.deviceId, input.clientId, grant.jkt, sha256(refreshToken), grant.acr, grant.amr, grant.authTime,
           // Sesiones del panel: 8 h absolutas. Apps móviles: REFRESH_TOKEN_TTL_DAYS.
-          input.clientId === ADMIN_CLIENT ? 8 / 24 : this.config.REFRESH_TOKEN_TTL_DAYS],
+          input.clientId === ADMIN_CLIENT ? 8 / 24 : this.config.REFRESH_TOKEN_TTL_DAYS, u.rows[0].sensitive_ops_locked_until],
       );
       await this.audit.record({ action: 'session.create', resourceType: 'session', resourceId: sessionId, actorUserId: grant.userId, actorDeviceId: grant.deviceId, metadata: { acr: grant.acr, amr: grant.amr.join(' ') } }, req, c);
       return rows[0]!;
@@ -106,7 +107,7 @@ export class TokenService {
 
     const outcome = await withTransaction(this.pool, async (c) => {
       const { rows } = await c.query<SessionRow>(
-        `SELECT s.*, u.status AS user_status FROM identity.sessions s JOIN identity.users u ON u.id = s.user_id
+        `SELECT s.*, u.status AS user_status, u.sensitive_ops_locked_until FROM identity.sessions s JOIN identity.users u ON u.id = s.user_id
          WHERE s.current_token_hash = $1 FOR UPDATE OF s`,
         [oldHash],
       );
@@ -154,7 +155,7 @@ export class TokenService {
       `UPDATE identity.sessions s SET acr = $3, amr = $4, auth_time = now()
        FROM identity.users u
        WHERE s.id = $1 AND s.user_id = $2 AND u.id = s.user_id AND s.revoked_at IS NULL AND s.expires_at > now() AND u.status = 'active'
-       RETURNING s.*, u.status AS user_status`,
+       RETURNING s.*, u.status AS user_status, u.sensitive_ops_locked_until`,
       [sessionId, userId, acr, amr],
     );
     if (!rows[0]) throw new OAuthError('invalid_grant');
@@ -213,6 +214,8 @@ export class TokenService {
         amr: s.amr,
         auth_time: Math.floor(new Date(s.auth_time).getTime() / 1000),
         cnf: { jkt: s.dpop_jkt },
+        // Bloqueo anti SIM swap vigente (la API niega retiros y cambios de cuenta bancaria hasta esa fecha).
+        ...(s.sensitive_ops_locked_until && s.sensitive_ops_locked_until > new Date() ? { sol: Math.floor(s.sensitive_ops_locked_until.getTime() / 1000) } : {}),
         jti: randomUUID(),
       },
       'at+jwt',

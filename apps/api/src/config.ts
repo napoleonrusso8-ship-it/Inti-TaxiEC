@@ -57,6 +57,17 @@ const schema = z
     TRACKING_BASE_URL: z.string().url().default('https://seguir.intitaxi.ec'),
     /** Portal del titular de datos (aviso LOPDP, consentimiento de acompañantes). */
     SUBJECT_PORTAL_URL: z.string().url().default('https://privacidad.intitaxi.ec'),
+    /** Pasarela PCI DSS: "kushki" en producción; "mock" solo desarrollo. */
+    PAYMENT_GATEWAY: z.enum(['kushki', 'mock']).default('mock'),
+    KUSHKI_BASE_URL: z.string().url().default('https://api-uat.kushkipagos.com'),
+    KUSHKI_PRIVATE_MERCHANT_ID: z.string().optional(),
+    KUSHKI_WEBHOOK_SECRET: z.string().optional(),
+    WEBHOOK_SECRET_PAYMENTS: base64Key(32).optional(),
+    /** Comisión de la plataforma en puntos básicos (2000 = 20 %). ⚠️ Definir con el negocio. */
+    PLATFORM_COMMISSION_BPS: z.coerce.number().int().min(0).max(5000).default(2000),
+    PAYOUT_MIN_CENTS: z.coerce.number().int().min(100).default(500),
+    /** Espera tras registrar/cambiar la cuenta bancaria antes de poder retirar (anti robo de cuenta). */
+    PAYOUT_ACCOUNT_COOLDOWN_HOURS: z.coerce.number().int().min(0).max(240).default(72),
     MATCHING_SWEEP_MS: z.coerce.number().int().min(200).max(10000).default(1000),
   })
   .superRefine((c, ctx) => {
@@ -65,6 +76,8 @@ const schema = z
     if (!c.AUTH_JWKS_URL && !c.AUTH_JWKS_JSON) add('AUTH_JWKS_URL', 'requerida');
     if (c.KYC_PROVIDER === 'veriff' && (!c.VERIFF_API_KEY || !c.VERIFF_SHARED_SECRET)) add('VERIFF_API_KEY', 'requerida con KYC_PROVIDER=veriff');
     if (c.KYC_PROVIDER === 'mock' && !c.WEBHOOK_SECRET_KYC) add('WEBHOOK_SECRET_KYC', 'requerida con KYC_PROVIDER=mock');
+    if (c.PAYMENT_GATEWAY === 'kushki' && (!c.KUSHKI_PRIVATE_MERCHANT_ID || !c.KUSHKI_WEBHOOK_SECRET)) add('KUSHKI_PRIVATE_MERCHANT_ID', 'requerida con PAYMENT_GATEWAY=kushki');
+    if (c.PAYMENT_GATEWAY === 'mock' && !c.WEBHOOK_SECRET_PAYMENTS) add('WEBHOOK_SECRET_PAYMENTS', 'requerida con PAYMENT_GATEWAY=mock');
     if (c.MAPS_PROVIDER === 'google' && !c.GOOGLE_MAPS_API_KEY) add('GOOGLE_MAPS_API_KEY', 'requerida con MAPS_PROVIDER=google');
     if (c.STORAGE_DRIVER === 's3' && !c.S3_BUCKET) add('S3_BUCKET', 'requerida con STORAGE_DRIVER=s3');
     if (c.NODE_ENV !== 'production') return;
@@ -72,6 +85,7 @@ const schema = z
     prod(!c.DEV_TOOLS, 'DEV_TOOLS', 'no se permiten herramientas de desarrollo');
     prod(c.KYC_PROVIDER === 'veriff', 'KYC_PROVIDER', 'no se permite el proveedor simulado');
     prod(!c.AUTH_JWKS_JSON, 'AUTH_JWKS_JSON', 'usa AUTH_JWKS_URL');
+    prod(c.PAYMENT_GATEWAY === 'kushki', 'PAYMENT_GATEWAY', 'no se permite la pasarela simulada');
     prod(c.MAPS_PROVIDER === 'google', 'MAPS_PROVIDER', 'debe ser google');
     prod(c.STORAGE_DRIVER === 's3' && !!c.S3_KMS_KEY_ID, 'STORAGE_DRIVER', 'debe ser s3 con SSE-KMS');
   });

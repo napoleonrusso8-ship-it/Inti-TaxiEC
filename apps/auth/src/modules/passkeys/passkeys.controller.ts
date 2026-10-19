@@ -184,12 +184,12 @@ export class PasskeysController {
       await this.audit.record({ action: 'stepup.passkey', resourceType: 'session', resourceId: auth.sessionId, outcome: 'denied' }, req);
       throw new AppError(400, 'passkey_invalid', 'No se pudo verificar la passkey');
     }
-    const tokens = await this.tokens.stepUp(auth.sessionId, auth.userId, PASSKEY_AMR, ACR_PHR);
     // Una passkey registrada antes del bloqueo prueba que no es un atacante con la SIM: se levanta el bloqueo anti SIM swap.
     const lifted = await this.pool.query(
       `UPDATE identity.users SET sensitive_ops_locked_until = NULL, updated_at = now() WHERE id = $1 AND sensitive_ops_locked_until > now()`,
       [auth.userId],
     );
+    const tokens = await this.tokens.stepUp(auth.sessionId, auth.userId, PASSKEY_AMR, ACR_PHR);
     await this.audit.record({ action: 'stepup.passkey', resourceType: 'session', resourceId: auth.sessionId, metadata: { lock_lifted: (lifted.rowCount ?? 0) > 0 } }, req);
     return tokens;
   }

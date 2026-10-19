@@ -144,7 +144,12 @@ export const actions: Record<string, Handler> = {
   },
   'trip.request': async (e, p) => {
     if (!e.data.quoteId) return { status: 409, body: { title: 'Primero cotiza' } };
-    const r = await e.device.call('api', 'POST', '/v1/trips', { quoteId: e.data.quoteId, paymentMethod: p.paymentMethod ?? 'cash', ...(p.extra ?? {}) }, { headers: { 'Idempotency-Key': `sim-${Date.now()}-${Math.random().toString(36).slice(2, 12)}` } });
+    let paymentMethodId: string | undefined;
+    if (p.paymentMethod === 'card') {
+      const cards = await e.device.call('api', 'GET', '/v1/payment-methods');
+      paymentMethodId = cards.body?.find((c: { status: string }) => c.status === 'active')?.id;
+    }
+    const r = await e.device.call('api', 'POST', '/v1/trips', { quoteId: e.data.quoteId, paymentMethod: p.paymentMethod ?? 'cash', paymentMethodId, ...(p.extra ?? {}) }, { headers: { 'Idempotency-Key': `sim-${Date.now()}-${Math.random().toString(36).slice(2, 12)}` } });
     if (r.status === 201) e.data.tripId = r.body.id;
     return r;
   },
@@ -244,6 +249,36 @@ export const actions: Record<string, Handler> = {
     return ok({ enviado: p.text, ultimos: sock.messages.filter((m) => m.type === 'chat').slice(-5) });
   },
 
+  // ----- Módulo 7: pagos -----
+  'card.add': async (e, p) => {
+    const r = await e.device.call('api', 'POST', '/v1/payment-methods', { cardToken: `${p.kind}_${Math.random().toString(36).slice(2, 8)}` });
+    if (r.body?.threeDsUrl) e.data.threeDsRef = String(r.body.threeDsUrl).split('/').pop();
+    return r;
+  },
+  'card.3ds': async (e, p, ctx) => {
+    if (!e.data.threeDsRef) return { status: 409, body: { title: 'No hay un desafío 3-D Secure pendiente' } };
+    return fetchJson(`${ctx.services.api}/v1/dev/payments/3ds/${e.data.threeDsRef}/complete`, 'POST', { result: p.result });
+  },
+  'card.list': (e) => e.device.call('api', 'GET', '/v1/payment-methods'),
+  'trip.receipt': (e, p) => e.device.call('api', 'GET', `/v1/trips/${p.tripId || e.data.tripId}/receipt`),
+  wallet: (e) => e.device.call('api', 'GET', '/v1/wallet'),
+  'payment.retry': async (e) => {
+    const cards = (await e.device.call('api', 'GET', '/v1/payment-methods')).body ?? [];
+    const card = [...cards].reverse().find((c: { status: string }) => c.status === 'active');
+    const hist = await e.device.call('api', 'GET', `/v1/trips/${e.data.tripId}/receipt`);
+    if (!hist.body?.receiptId || !card) return { status: 409, body: { title: 'Necesitas un cobro rechazado y otra tarjeta activa' } };
+    return e.device.call('api', 'POST', `/v1/payments/${hist.body.receiptId}/retry`, { paymentMethodId: card.id });
+  },
+  'driver.earnings': (e) => e.device.call('api', 'GET', '/v1/driver/earnings'),
+  'driver.payoutAccount': (e, p) =>
+    e.device.call('api', 'POST', '/v1/driver/payout-accounts', { bankCode: p.bankCode, accountType: 'savings', accountNumber: p.accountNumber, holderName: p.holderName, holderCedula: p.holderCedula }),
+  'driver.payout': (e, p) => e.device.call('api', 'POST', '/v1/driver/payouts', { amountCents: Number(p.amountCents) }, { headers: { 'Idempotency-Key': `sim-${Date.now()}-${Math.random().toString(36).slice(2, 12)}` } }),
+  'admin.wallet.credit': (e, p) => e.device.call('api', 'POST', `/v1/admin/wallets/${p.userId}/credit`, { amountCents: Number(p.amountCents), reason: p.reason }),
+  'admin.refund': (e, p) => e.device.call('api', 'POST', `/v1/admin/payments/${p.paymentId}/refund`, { amountCents: Number(p.amountCents), to: p.to, reason: p.reason }),
+  'admin.fraud': (e) => e.device.call('api', 'GET', '/v1/admin/fraud/signals'),
+  'admin.payouts': (e, p) => e.device.call('api', 'GET', `/v1/admin/payouts?status=${p.status}`),
+  'admin.payout.decide': (e, p) => e.device.call('api', 'POST', `/v1/admin/payouts/${p.payoutId}/decision`, { decision: p.decision, reason: p.reason }),
+
   // ----- Panel admin (módulo 3 y siguientes) -----
   'admin.me': (e) => e.device.call('api', 'GET', '/v1/admin/me'),
   'admin.drivers': (e, p) => e.device.call('api', 'GET', `/v1/admin/drivers?status=${p.status ?? 'under_review'}`),
@@ -264,8 +299,8 @@ export const actions: Record<string, Handler> = {
   call: (e, p) => e.device.call(p.service ?? 'api', p.method ?? 'GET', p.path, p.body),
 };
 
-async function fetchJson(url: string, method: string): Promise<HttpResult> {
-  const r = await fetch(url, { method });
+async function fetchJson(url: string, method: string, body?: unknown): Promise<HttpResult> {
+  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
   const t = await r.text();
   return { status: r.status, body: t ? JSON.parse(t) : null };
 }

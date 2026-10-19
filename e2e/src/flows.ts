@@ -137,3 +137,19 @@ export async function offerFor(d: SimDevice, tripId: string, ms = 8000): Promise
   if (!o) throw new Error(`sin oferta para ${tripId}`);
   return o.offerId;
 }
+
+/** Viaje completado de punta a punta con el medio de pago indicado. */
+export async function completedTrip(s: Stack, opts: { at: { lat: number; lng: number }; passenger?: { d: SimDevice; userId: string }; payment?: Record<string, unknown>; driver?: Awaited<ReturnType<typeof onlineDriver>>; reviewer?: SimDevice }) {
+  const drv = opts.driver ?? (await onlineDriver(s, opts.at, 4, opts.reviewer));
+  const p = opts.passenger ?? (await s.loggedIn());
+  const t = await requestTrip(p.d, opts.payment ?? {}, opts.at, MALECON);
+  if (t.status !== 201) return { drv, p, trip: t };
+  await drv.d.call('api', 'POST', `/v1/driver/offers/${await offerFor(drv.d, t.body.id)}/accept`);
+  await drv.d.call('api', 'POST', `/v1/driver/trips/${t.body.id}/arrived`);
+  const pin = (await p.d.call('api', 'GET', `/v1/trips/${t.body.id}/pin`)).body.pin;
+  await drv.d.call('api', 'POST', `/v1/driver/trips/${t.body.id}/start`, { pin });
+  // Simula el recorrido para que no parezca un viaje fantasma
+  await drv.d.call('api', 'POST', '/v1/driver/location', { location: { lat: opts.at.lat + 0.0001, lng: opts.at.lng } });
+  await drv.d.call('api', 'POST', `/v1/driver/trips/${t.body.id}/complete`);
+  return { drv, p, trip: t };
+}

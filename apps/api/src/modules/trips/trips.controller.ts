@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { PG_POOL } from '../../tokens.js';
 import { DriversService } from '../drivers/drivers.service.js';
 import { KycService } from '../kyc/kyc.service.js';
+import { FraudService } from '../payments/fraud.service.js';
 import { MatchingService } from './matching.service.js';
 import { PresenceService } from './presence.service.js';
 import { TripsService } from './trips.service.js';
@@ -93,6 +94,7 @@ export class DriverTripsController {
     @Inject(DriversService) private readonly drivers: DriversService,
     @Inject(KycService) private readonly kyc: KycService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(FraudService) private readonly fraud: FraudService,
   ) {}
 
   /** Conectarse: conductor aprobado, documentos vigentes, identidad fresca (re-verificación) y vehículo propio aprobado. */
@@ -110,6 +112,7 @@ export class DriverTripsController {
     const sessionId = randomUUID();
     await this.pool.query('INSERT INTO drivers.online_sessions (id, driver_id, vehicle_id, device_id) VALUES ($1, $2, $3, $4)', [sessionId, auth.userId, i.vehicleId, device.deviceId]);
     await this.presence.goOnline(auth.userId, { vehicleId: i.vehicleId, seats: v.rows[0].seats_passenger, sessionId }, { ...i.location, at: Date.now() });
+    await this.fraud.onDeviceUse(device.deviceId, auth.userId);
     await this.audit.record({ action: 'driver.online', resourceType: 'driver', resourceId: auth.userId, metadata: { vehicleId: i.vehicleId } }, req);
     return { online: true, sessionId };
   }

@@ -18,6 +18,8 @@ export interface AuthContext {
   jkt: string;
   /** Aplicación que obtuvo el token (intitaxi-passenger, intitaxi-driver, intitaxi-admin). */
   clientId: string;
+  /** Fin del bloqueo anti SIM swap (epoch s) si está vigente. */
+  sensitiveOpsLockedUntil: number | null;
 }
 
 /** Un solo factor (SMS o clave del dispositivo). */
@@ -94,6 +96,7 @@ export class AccessTokenVerifier {
       roles: Array.isArray(payload.roles) ? payload.roles.map(String) : [],
       jkt,
       clientId: String(payload.client_id ?? ''),
+      sensitiveOpsLockedUntil: typeof payload.sol === 'number' ? payload.sol : null,
     };
   }
 }

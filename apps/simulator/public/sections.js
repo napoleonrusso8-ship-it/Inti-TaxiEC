@@ -147,6 +147,29 @@ export const SECTIONS = [
     ],
   },
   {
+    title: 'Módulo 7 · Pagos',
+    roles: ['passenger'],
+    note: 'La tarjeta se tokeniza en la pasarela (aquí: simulada). Para pagar con tarjeta elige "Tarjeta" al confirmar el viaje.',
+    items: [
+      { label: 'Agregar tarjeta', action: 'card.add', fields: [{ name: 'kind', label: 'Tarjeta de prueba', type: 'select', options: [{ value: 'tok_ok', label: 'Válida' }, { value: 'tok_3ds', label: 'Pide 3-D Secure' }, { value: 'tok_decline', label: 'Fondos insuficientes al cobrar' }, { value: 'tok_card_compartida', label: 'Tarjeta compartida (antifraude)' }] }] },
+      { label: 'Banco: resolver 3-D Secure', action: 'card.3ds', fields: [{ name: 'result', label: 'Resultado', type: 'select', options: [{ value: 'authenticated', label: 'Autenticado' }, { value: 'failed', label: 'Fallido' }] }] },
+      { label: 'Mis tarjetas', action: 'card.list' },
+      { label: 'Recibo del último viaje', action: 'trip.receipt' },
+      { label: 'Pagar deuda con otra tarjeta', action: 'payment.retry' },
+      { label: 'Mi billetera', action: 'wallet', hint: 'Sin recargas: solo reembolsos y créditos.' },
+    ],
+  },
+  {
+    title: 'Módulo 7 · Ganancias y retiros',
+    roles: ['driver'],
+    note: 'Cuenta bancaria y retiros exigen passkey reciente (crea una y usa "Confirmar con passkey" en el módulo 1).',
+    items: [
+      { label: 'Mis ganancias', action: 'driver.earnings' },
+      { label: 'Registrar cuenta bancaria', action: 'driver.payoutAccount', hint: 'Debe estar a tu nombre (misma cédula del KYC). 72 h de espera.', fields: [{ name: 'bankCode', label: 'Banco', type: 'select', options: ['PICHINCHA', 'GUAYAQUIL', 'PACIFICO', 'PRODUBANCO', 'BOLIVARIANO'].map((b) => ({ value: b, label: b })) }, { name: 'accountNumber', label: 'Nº de cuenta', default: '2201234567' }, { name: 'holderName', label: 'Titular', default: 'Juan Carlos Mora' }, { name: 'holderCedula', label: 'Cédula del titular', default: '0912345675' }] },
+      { label: 'Retirar', action: 'driver.payout', fields: [{ name: 'amountCents', label: 'Monto (centavos)', default: '500' }] },
+    ],
+  },
+  {
     title: 'Módulo 6 · En vivo (mapa, chat y enlaces)',
     roles: MOBILE,
     note: 'Necesita un viaje aceptado. El enlace de seguimiento se abre en el navegador (página pública con mapa).',
@@ -172,6 +195,17 @@ export const SECTIONS = [
       { label: 'Aprobar todos los documentos', action: 'admin.docs.approveAll', fields: [driverId] },
       { label: 'Decidir conductor', action: 'admin.driver.decide', fields: [driverId, { name: 'decision', label: 'Decisión', type: 'select', options: [{ value: 'approve', label: 'Aprobar' }, { value: 'reject', label: 'Rechazar' }, { value: 'suspend', label: 'Suspender' }] }, { name: 'reason', label: 'Motivo', default: 'Documentos en regla' }] },
       { label: 'Asignar rol (super_admin)', action: 'admin.role.grant', fields: [{ name: 'userId', label: 'ID de usuario' }, { name: 'role', label: 'Rol', type: 'select', options: ['driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo'].map((v) => ({ value: v, label: v })) }] },
+    ],
+  },
+  {
+    title: 'Panel admin · Pagos y antifraude',
+    roles: ['admin'],
+    items: [
+      { label: 'Acreditar billetera (support)', action: 'admin.wallet.credit', fields: [{ name: 'userId', label: 'ID de usuario' }, { name: 'amountCents', label: 'Centavos (máx. 5000)', default: '1000' }, { name: 'reason', label: 'Motivo', default: 'Compensación por demora' }] },
+      { label: 'Reembolsar pago (support)', action: 'admin.refund', fields: [{ name: 'paymentId', label: 'ID del pago (receiptId)' }, { name: 'amountCents', label: 'Centavos' }, { name: 'to', label: 'Destino', type: 'select', options: [{ value: 'original', label: 'Tarjeta' }, { value: 'wallet', label: 'Billetera' }] }, { name: 'reason', label: 'Motivo', default: 'Cobro incorrecto' }] },
+      { label: 'Señales de fraude (fraud_analyst)', action: 'admin.fraud' },
+      { label: 'Retiros (fraud_analyst)', action: 'admin.payouts', fields: [{ name: 'status', label: 'Estado', type: 'select', options: ['requested', 'under_review', 'paid', 'rejected'].map((v) => ({ value: v, label: v })) }] },
+      { label: 'Decidir retiro', action: 'admin.payout.decide', fields: [{ name: 'payoutId', label: 'ID del retiro' }, { name: 'decision', label: 'Decisión', type: 'select', options: [{ value: 'paid', label: 'Pagado' }, { value: 'rejected', label: 'Rechazar' }] }, { name: 'reason', label: 'Referencia / motivo', default: 'Transferencia SPI' }] },
     ],
   },
   {

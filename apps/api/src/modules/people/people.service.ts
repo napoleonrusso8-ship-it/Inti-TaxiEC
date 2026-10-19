@@ -112,7 +112,7 @@ export class PeopleService implements OnModuleInit, OnModuleDestroy {
     return { givenNames: await dec(v?.given_names_enc ?? null, 'given_names'), familyNames: await dec(v?.family_names_enc ?? null, 'family_names'), idType: 'none', idNumber: null, idCountry: null, email: null, isMinor: false };
   }
 
-  async #registerParty(c: PoolClient, trip: { id: string; requesterUserId: string }, rawInput: Record<string, unknown>, req: AppRequest) {
+  async #registerParty(c: PoolClient, trip: { id: string; requesterUserId: string; deviceId: string }, rawInput: Record<string, unknown>, req: AppRequest) {
     const input = parseInput(PartyInput, { companions: rawInput.companions, savedCompanionIds: rawInput.savedCompanionIds, forThirdParty: rawInput.forThirdParty });
     const companions = input.companions.map((p, i) => normalizePerson(p, `acompañante ${i + 1}`));
     for (const sid of input.savedCompanionIds) companions.push(await this.#fromSaved(c, trip.requesterUserId, sid));

@@ -66,7 +66,7 @@ const MAX_PIN_ATTEMPTS = 3;
 /** Hooks que otros módulos registran (acompañantes, pagos…) sin acoplar el núcleo de viajes. */
 export interface TripRequestHooks {
   /** Dentro de la transacción de creación. Devuelve el tamaño final del grupo. */
-  beforeCreate?(c: PoolClient, trip: { id: string; requesterUserId: string }, input: Record<string, unknown>, req: AppRequest): Promise<{ partySize?: number; isForThirdParty?: boolean } | void>;
+  beforeCreate?(c: PoolClient, trip: { id: string; requesterUserId: string; deviceId: string }, input: Record<string, unknown>, req: AppRequest): Promise<{ partySize?: number; isForThirdParty?: boolean } | void>;
 }
 
 @Injectable()
@@ -140,7 +140,7 @@ export class TripsService {
         throw e.code === '23505' ? new AppError(409, 'active_trip_exists', 'Ya tienes un viaje en curso') : e;
       });
       for (const h of this.hooks) {
-        const r = await h.beforeCreate?.(c, { id, requesterUserId: userId }, input, req);
+        const r = await h.beforeCreate?.(c, { id, requesterUserId: userId, deviceId: device.deviceId }, input, req);
         if (r?.partySize) await c.query('UPDATE trips.trips SET party_size = $2 WHERE id = $1', [id, r.partySize]);
         if (r?.isForThirdParty) await c.query('UPDATE trips.trips SET is_for_third_party = true WHERE id = $1', [id]);
       }
