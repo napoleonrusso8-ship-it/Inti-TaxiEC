@@ -7,6 +7,9 @@ import {
   AuditService,
   DpopProofGuard,
   InfraModule,
+  INTERNAL_SECRET,
+  InternalAuthGuard,
+  REDIS,
   ProblemFilter,
   RecentMfaGuard,
   RedisDpopReplayStore,
@@ -26,6 +29,8 @@ import { PasskeysController } from './modules/passkeys/passkeys.controller.js';
 import { SessionsController } from './modules/sessions/sessions.controller.js';
 import { EmailStepUpController } from './modules/step-up/email-step-up.controller.js';
 import { AdminLoginController } from './modules/admin/admin-login.controller.js';
+import { InternalContactController, MASKED_CALLS, MockMaskedCallProvider } from './modules/internal/contact.controller.js';
+import type { Redis } from 'ioredis';
 import { TokenController } from './modules/tokens/token.controller.js';
 import { TokenService } from './modules/tokens/token.service.js';
 import { CONFIG } from './tokens.js';
@@ -63,9 +68,12 @@ export class AppModule {
         CommonModule,
         AttestationModule,
       ],
-      controllers: [HealthController, TokenController, OtpController, AccountController, PasskeysController, DeviceKeysController, SessionsController, EmailStepUpController, AdminLoginController],
+      controllers: [HealthController, TokenController, OtpController, AccountController, PasskeysController, DeviceKeysController, SessionsController, EmailStepUpController, AdminLoginController, InternalContactController],
       providers: [
         { provide: APP_FILTER, useClass: ProblemFilter },
+        { provide: INTERNAL_SECRET, useValue: Buffer.from(config.INTERNAL_SIGNING_SECRET, 'base64') },
+        InternalAuthGuard,
+        { provide: MASKED_CALLS, inject: [REDIS], useFactory: (r: Redis) => new MockMaskedCallProvider(r) },
         UsersRepository,
         NewDeviceNotifier,
         OtpService,

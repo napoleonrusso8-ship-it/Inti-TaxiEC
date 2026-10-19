@@ -30,6 +30,9 @@ const schema = z
     WEBAUTHN_RP_NAME: z.string().default('Inti Taxi'),
     WEBAUTHN_ORIGINS: csv,
 
+    /** Secreto HMAC para llamadas entre servicios (además de mTLS). */
+    INTERNAL_SIGNING_SECRET: base64Key(32),
+    MASKED_CALLS_PROVIDER: z.enum(['mock']).default('mock'),
     EMAIL_VERIFY_URL: z.string().url().default('https://intitaxi.ec/verificar-correo'),
   })
   .superRefine((c, ctx) => {
@@ -41,6 +44,7 @@ const schema = z
     prod(c.ANDROID_CERT_SHA256.length > 0, 'ANDROID_CERT_SHA256', 'falta la huella del certificado de firma');
     prod(!!c.PLAY_INTEGRITY_CREDENTIALS_FILE, 'PLAY_INTEGRITY_CREDENTIALS_FILE', 'faltan credenciales de Play Integrity');
     prod(c.APP_ATTEST_APP_IDS.length > 0 && !!c.APP_ATTEST_ROOT_CA_FILE, 'APP_ATTEST_ROOT_CA_FILE', 'falta configuración de App Attest');
+    prod(c.MASKED_CALLS_PROVIDER !== 'mock', 'MASKED_CALLS_PROVIDER', 'falta integrar un proveedor real de números enmascarados');
     prod(c.WEBAUTHN_ORIGINS.every((o) => o.startsWith('https://') || o.startsWith('android:apk-key-hash:')), 'WEBAUTHN_ORIGINS', 'orígenes no seguros');
   });
 

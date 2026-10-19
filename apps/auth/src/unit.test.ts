@@ -65,6 +65,7 @@ describe('loadConfig', () => {
     REDIS_URL: 'redis://x',
     BLIND_INDEX_KEY: k,
     OTP_PEPPER: k,
+    INTERNAL_SIGNING_SECRET: k,
     JWT_SIGNING_KEY_PEM: 'pem',
     JWT_SIGNING_KID: 'k1',
     WEBAUTHN_ORIGINS: 'https://intitaxi.ec',

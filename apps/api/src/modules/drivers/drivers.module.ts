@@ -14,6 +14,7 @@ export class DriversModule {
   static forConfig(c: AppConfig): DynamicModule {
     return {
       module: DriversModule,
+      global: true,
       controllers: [DriverController, AdminDriversController, AdminRolesController, ...(c.DEV_TOOLS ? [DevStorageController, DevAdminController] : [])],
       providers: [
         DriversService,

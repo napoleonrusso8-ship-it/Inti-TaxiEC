@@ -17,6 +17,7 @@ import type { AppConfig } from './config.js';
 import { HealthController } from './health.controller.js';
 import { KycModule } from './modules/kyc/kyc.module.js';
 import { DriversModule } from './modules/drivers/drivers.module.js';
+import { TripsModule } from './modules/trips/trips.module.js';
 import { CONFIG } from './tokens.js';
 
 export type ServiceRole = 'api' | 'sos';
@@ -53,7 +54,7 @@ export class AppModule {
     class CoreModule {}
 
     // El servicio SOS se despliega aparte (aislamiento de fallos y credenciales) y solo carga sus módulos.
-    const domain = role === 'api' ? [KycModule.forConfig(config), DriversModule.forConfig(config)] : [];
+    const domain = role === 'api' ? [KycModule.forConfig(config), DriversModule.forConfig(config), TripsModule.forConfig(config)] : [];
     return {
       module: AppModule,
       imports: [

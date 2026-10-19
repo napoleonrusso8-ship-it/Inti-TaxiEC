@@ -33,6 +33,25 @@ const schema = z
     LOCAL_STORAGE_DIR: z.string().default('.data/storage'),
     /** Antigüedad máxima del vehículo. ⚠️ Confirmar con la ATM de Guayaquil. */
     VEHICLE_MAX_AGE_YEARS: z.coerce.number().int().min(1).max(40).default(15),
+
+    /** Llamadas firmadas a otros servicios (además de mTLS). */
+    INTERNAL_SIGNING_SECRET: base64Key(32),
+    INTERNAL_AUTH_URL: z.string().url(),
+
+    /** Rutas y distancias: "google" (Routes API) en producción; "estimator" (línea recta × factor) en desarrollo. */
+    MAPS_PROVIDER: z.enum(['google', 'estimator']).default('estimator'),
+    GOOGLE_MAPS_API_KEY: z.string().optional(),
+
+    /** Tarifa bajo demanda (centavos). ⚠️ Valores de ejemplo: definir con negocio y ordenanza municipal. */
+    FARE_BASE_CENTS: z.coerce.number().int().min(0).default(150),
+    FARE_PER_KM_CENTS: z.coerce.number().int().min(0).default(40),
+    FARE_PER_MIN_CENTS: z.coerce.number().int().min(0).default(10),
+    FARE_MIN_CENTS: z.coerce.number().int().min(0).default(200),
+
+    MATCHING_OFFER_TTL_SECONDS: z.coerce.number().int().min(5).max(60).default(15),
+    MATCHING_RADIUS_M: z.coerce.number().int().min(500).max(20000).default(5000),
+    MATCHING_MAX_RADIUS_M: z.coerce.number().int().min(500).max(30000).default(8000),
+    MATCHING_SWEEP_MS: z.coerce.number().int().min(200).max(10000).default(1000),
   })
   .superRefine((c, ctx) => {
     const add = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
@@ -40,12 +59,14 @@ const schema = z
     if (!c.AUTH_JWKS_URL && !c.AUTH_JWKS_JSON) add('AUTH_JWKS_URL', 'requerida');
     if (c.KYC_PROVIDER === 'veriff' && (!c.VERIFF_API_KEY || !c.VERIFF_SHARED_SECRET)) add('VERIFF_API_KEY', 'requerida con KYC_PROVIDER=veriff');
     if (c.KYC_PROVIDER === 'mock' && !c.WEBHOOK_SECRET_KYC) add('WEBHOOK_SECRET_KYC', 'requerida con KYC_PROVIDER=mock');
+    if (c.MAPS_PROVIDER === 'google' && !c.GOOGLE_MAPS_API_KEY) add('GOOGLE_MAPS_API_KEY', 'requerida con MAPS_PROVIDER=google');
     if (c.STORAGE_DRIVER === 's3' && !c.S3_BUCKET) add('S3_BUCKET', 'requerida con STORAGE_DRIVER=s3');
     if (c.NODE_ENV !== 'production') return;
     const prod = (ok: boolean, path: string, message: string) => !ok && add(path, `producción: ${message}`);
     prod(!c.DEV_TOOLS, 'DEV_TOOLS', 'no se permiten herramientas de desarrollo');
     prod(c.KYC_PROVIDER === 'veriff', 'KYC_PROVIDER', 'no se permite el proveedor simulado');
     prod(!c.AUTH_JWKS_JSON, 'AUTH_JWKS_JSON', 'usa AUTH_JWKS_URL');
+    prod(c.MAPS_PROVIDER === 'google', 'MAPS_PROVIDER', 'debe ser google');
     prod(c.STORAGE_DRIVER === 's3' && !!c.S3_KMS_KEY_ID, 'STORAGE_DRIVER', 'debe ser s3 con SSE-KMS');
   });
 

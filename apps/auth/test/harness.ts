@@ -35,6 +35,7 @@ export function testConfig(): AppConfig {
     LOCAL_MASTER_KEY: key(),
     BLIND_INDEX_KEY: key(),
     OTP_PEPPER: key(),
+    INTERNAL_SIGNING_SECRET: key(),
     JWT_SIGNING_KEY_PEM: privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(),
     JWT_SIGNING_KID: 'test-1',
     ATTESTATION_MODE: 'dev',

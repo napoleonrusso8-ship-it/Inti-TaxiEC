@@ -76,3 +76,57 @@ export async function approvedDriver(s: Stack, reviewer?: SimDevice, seats = 4) 
   if (dec.status !== 200) throw new Error(`approve ${dec.status} ${JSON.stringify(dec.body)}`);
   return { ...drv, admin };
 }
+
+export const MALL_DEL_SOL = { lat: -2.1547, lng: -79.8929 };
+export const MALECON = { lat: -2.1939, lng: -79.8803 };
+
+/** Selfie del conductor si la política la exige (misma cédula = misma persona). */
+export async function freshIdentity(s: Stack, d: SimDevice, doc: string) {
+  const chk = await d.call('api', 'POST', '/v1/kyc/reverification/check');
+  if (!chk.body.required) return;
+  const sess = await d.call('api', 'POST', '/v1/kyc/sessions', { kind: 'driver_reverify' });
+  await decideKyc(s, sess.body.sessionUrl, { status: 'approved', documentNumber: doc });
+}
+
+/** Conductor aprobado y conectado cerca de un punto. */
+export async function onlineDriver(s: Stack, at = MALL_DEL_SOL, seats = 4, reviewer?: SimDevice) {
+  const drv = await approvedDriver(s, reviewer, seats);
+  await freshIdentity(s, drv.d, drv.doc);
+  const on = await drv.d.call('api', 'POST', '/v1/driver/online', { vehicleId: drv.vehicleId, location: at });
+  if (on.status !== 200) throw new Error(`online ${on.status} ${JSON.stringify(on.body)}`);
+  return drv;
+}
+
+let idem = 0;
+export const idemKey = () => `e2e-${Date.now()}-${++idem}-xxxxxxxx`;
+
+export async function requestTrip(d: SimDevice, extra: Record<string, unknown> = {}, from = MALL_DEL_SOL, to = MALECON) {
+  const q = await d.call('api', 'POST', '/v1/trips/quotes', { origin: from, destination: to, originLabel: 'Mall del Sol', destinationLabel: 'Malecón 2000' });
+  if (q.status !== 200) throw new Error(`quote ${q.status} ${JSON.stringify(q.body)}`);
+  return d.call('api', 'POST', '/v1/trips', { quoteId: q.body.quoteId, paymentMethod: 'cash', ...extra }, { headers: { 'Idempotency-Key': idemKey() } });
+}
+
+export async function waitFor<T>(fn: () => Promise<T>, ok: (v: T) => boolean, ms = 8000): Promise<T> {
+  const end = Date.now() + ms;
+  let v = await fn();
+  while (!ok(v) && Date.now() < end) {
+    await new Promise((r) => setTimeout(r, 150));
+    v = await fn();
+  }
+  return v;
+}
+
+/** Viaje completo hasta "en curso" (solicitado → aceptado → llegó → PIN). */
+export async function startedTrip(s: Stack, opts: { passenger?: { d: SimDevice; userId: string }; extra?: Record<string, unknown> } = {}) {
+  const drv = await onlineDriver(s);
+  const p = opts.passenger ?? (await s.loggedIn());
+  const t = await requestTrip(p.d, opts.extra ?? {});
+  if (t.status !== 201) throw new Error(`trip ${t.status} ${JSON.stringify(t.body)}`);
+  const offers = await waitFor(() => drv.d.call('api', 'GET', '/v1/driver/offers'), (r) => r.body.length > 0);
+  await drv.d.call('api', 'POST', `/v1/driver/offers/${offers.body[0].offerId}/accept`);
+  await drv.d.call('api', 'POST', `/v1/driver/trips/${t.body.id}/arrived`);
+  const pin = await p.d.call('api', 'GET', `/v1/trips/${t.body.id}/pin`);
+  const st = await drv.d.call('api', 'POST', `/v1/driver/trips/${t.body.id}/start`, { pin: pin.body.pin });
+  if (st.status !== 200) throw new Error(`start ${st.status} ${JSON.stringify(st.body)}`);
+  return { drv, p, tripId: t.body.id as string };
+}

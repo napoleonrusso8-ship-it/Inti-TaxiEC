@@ -9,3 +9,4 @@ export * from './redis-stores.js';
 export * from './notifier.js';
 export * from './infra.module.js';
 export * from './http.js';
+export * from './internal-auth.js';

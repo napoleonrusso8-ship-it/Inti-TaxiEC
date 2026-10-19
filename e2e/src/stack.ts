@@ -54,7 +54,10 @@ export class Stack {
     for (const s of services) this.urls[s] = `http://localhost:${PORT[s]}`;
     const key = () => randomBytes(32).toString('base64');
     const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const internalSecret = key();
     const common = {
+      INTERNAL_SIGNING_SECRET: internalSecret,
+      INTERNAL_AUTH_URL: this.urls.auth ?? 'http://localhost:39101',
       NODE_ENV: 'development',
       DATABASE_URL: dbUrl,
       REDIS_URL: redisUrl,
@@ -76,7 +79,7 @@ export class Stack {
         WEBAUTHN_RP_ID: 'localhost',
         WEBAUTHN_ORIGINS: 'http://localhost:39101',
       },
-      api: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key(), WEBHOOK_SECRET_KYC: key(), KYC_PROVIDER: 'mock' },
+      api: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key(), WEBHOOK_SECRET_KYC: key(), KYC_PROVIDER: 'mock', MATCHING_SWEEP_MS: '250', MATCHING_OFFER_TTL_SECONDS: '5', REVERIFY_PROBABILITY: '0' },
       sos: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key() },
       realtime: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key() },
     };

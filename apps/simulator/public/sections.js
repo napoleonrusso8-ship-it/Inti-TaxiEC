@@ -3,6 +3,8 @@ const phoneDefault = (d) => d.phone ?? '';
 const MOBILE = ['passenger', 'driver'];
 const firstDriver = (_d, s) => s.devices.find((x) => x.role === 'driver' && x.userId)?.userId ?? '';
 const driverId = { name: 'driverId', label: 'ID del conductor (usuario)', default: firstDriver };
+const PLACE_NAMES = ['Mall del Sol', 'Malecón 2000', 'Aeropuerto José Joaquín de Olmedo', 'Terminal Terrestre', 'Parque Centenario', 'City Mall', 'Riocentro Norte', 'San Marino', 'Urdesa', 'Samborondón'];
+const place = (name, label, first = 0) => ({ name, label, type: 'select', options: [...PLACE_NAMES.slice(first), ...PLACE_NAMES.slice(0, first)].map((p) => ({ value: p, label: p })) });
 
 export const SECTIONS = [
   {
@@ -86,6 +88,38 @@ export const SECTIONS = [
       },
       { label: 'Enviar solicitud a revisión', action: 'driver.submit' },
       { label: 'Ver mi estado de conductor', action: 'driver.profile' },
+    ],
+  },
+  {
+    title: 'Módulo 4 · Pedir un taxi',
+    roles: ['passenger'],
+    items: [
+      { label: 'Cotizar', action: 'trip.quote', hint: 'Precio cerrado, válido 5 min.', fields: [place('from', 'Origen'), place('to', 'Destino', 1)] },
+      { label: 'Confirmar viaje', action: 'trip.request', fields: [{ name: 'paymentMethod', label: 'Pago', type: 'select', options: [{ value: 'cash', label: 'Efectivo' }, { value: 'card', label: 'Tarjeta' }, { value: 'wallet', label: 'Billetera' }] }] },
+      { label: 'Ver mi viaje', action: 'trip.view', hint: 'Conductor, placa y ubicación.' },
+      { label: 'Ver PIN', action: 'trip.pin', hint: 'Díselo al conductor al subir.' },
+      { label: 'Llamar al conductor (número enmascarado)', action: 'trip.contact' },
+      { label: 'Cancelar', action: 'trip.cancel', hint: 'No se puede una vez iniciado.' },
+      { label: 'Calificar', action: 'trip.rate', fields: [{ name: 'stars', label: 'Estrellas', type: 'select', options: [5, 4, 3, 2, 1].map((n) => ({ value: n, label: '★'.repeat(n) })) }, { name: 'comment', label: 'Comentario' }] },
+      { label: 'Historial', action: 'trip.history' },
+    ],
+  },
+  {
+    title: 'Módulo 4 · Manejar',
+    roles: ['driver'],
+    note: 'Antes: conductor aprobado y, si toca, selfie de re-verificación (módulo 2).',
+    items: [
+      { label: 'Conectarme', action: 'driver.online', fields: [place('at', 'Estoy en')] },
+      { label: 'Mover mi ubicación', action: 'driver.location', fields: [place('at', 'Ir a'), { name: 'mock', label: 'GPS falso', type: 'select', options: [{ value: 'false', label: 'No' }, { value: 'true', label: 'Sí (app de ubicación falsa)' }] }] },
+      { label: 'Ver ofertas', action: 'driver.offers', hint: 'Cada oferta dura 15 s.' },
+      { label: 'Aceptar oferta', action: 'driver.accept' },
+      { label: 'Rechazar oferta', action: 'driver.reject' },
+      { label: 'Llegué', action: 'driver.arrived' },
+      { label: 'Iniciar con PIN', action: 'driver.start', hint: 'El PIN lo da el pasajero. 3 intentos.', fields: [{ name: 'pin', label: 'PIN' }] },
+      { label: 'Finalizar viaje', action: 'driver.complete' },
+      { label: 'Viaje actual', action: 'driver.current' },
+      { label: 'Calificar pasajero', action: 'trip.rate', fields: [{ name: 'stars', label: 'Estrellas', type: 'select', options: [5, 4, 3, 2, 1].map((n) => ({ value: n, label: '★'.repeat(n) })) }] },
+      { label: 'Desconectarme', action: 'driver.offline' },
     ],
   },
   {

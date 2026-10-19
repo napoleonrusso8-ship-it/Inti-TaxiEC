@@ -48,12 +48,13 @@ export class SimDevice {
   }
 
   /** Petición HTTP con DPoP (+ token y ticket si existen). */
-  async call<T = any>(service: string, method: string, path: string, body?: unknown, opts: { auth?: boolean; form?: boolean; accessToken?: string } = {}): Promise<HttpResult<T>> {
+  async call<T = any>(service: string, method: string, path: string, body?: unknown, opts: { auth?: boolean; form?: boolean; accessToken?: string; headers?: Record<string, string> } = {}): Promise<HttpResult<T>> {
     const url = this.#url(service, path);
     const at = opts.accessToken ?? (opts.auth === false ? undefined : this.accessToken || undefined);
     const headers: Record<string, string> = { DPoP: await createDpopProof(this.signer, { method, url, accessToken: at }) };
     if (at) headers.Authorization = `DPoP ${at}`;
     if (this.ticket) headers['X-Attestation-Ticket'] = this.ticket;
+    Object.assign(headers, opts.headers ?? {});
     let payload: string | undefined;
     if (body !== undefined) {
       if (opts.form) {

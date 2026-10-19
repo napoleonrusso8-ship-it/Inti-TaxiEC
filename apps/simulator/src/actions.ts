@@ -22,6 +22,20 @@ type Handler = (e: SimEntry, p: Record<string, any>, ctx: ActionContext) => Prom
 
 const ok = (body: unknown): HttpResult => ({ status: 200, body });
 
+/** Lugares de referencia en Guayaquil (coordenadas aproximadas, solo para el simulador). */
+export const PLACES: Record<string, { lat: number; lng: number }> = {
+  'Mall del Sol': { lat: -2.1547, lng: -79.8929 },
+  'Malecón 2000': { lat: -2.1939, lng: -79.8803 },
+  'Aeropuerto José Joaquín de Olmedo': { lat: -2.1574, lng: -79.8837 },
+  'Terminal Terrestre': { lat: -2.1407, lng: -79.8885 },
+  'Parque Centenario': { lat: -2.1896, lng: -79.8885 },
+  'City Mall': { lat: -2.1405, lng: -79.9068 },
+  'Riocentro Norte': { lat: -2.1357, lng: -79.9024 },
+  'San Marino': { lat: -2.1700, lng: -79.8986 },
+  Urdesa: { lat: -2.1745, lng: -79.9126 },
+  Samborondón: { lat: -2.1460, lng: -79.8640 },
+};
+
 /** Acciones disponibles en el simulador. Cada módulo añade las suyas. */
 export const actions: Record<string, Handler> = {
   // ----- Módulo 1: autenticación -----
@@ -121,6 +135,50 @@ export const actions: Record<string, Handler> = {
   },
   'driver.submit': (e) => e.device.call('api', 'POST', '/v1/driver/application/submit'),
   'driver.profile': (e) => e.device.call('api', 'GET', '/v1/driver/profile'),
+
+  // ----- Módulo 4: viajes -----
+  'trip.quote': async (e, p) => {
+    const r = await e.device.call('api', 'POST', '/v1/trips/quotes', { origin: PLACES[p.from], destination: PLACES[p.to], originLabel: p.from, destinationLabel: p.to });
+    if (r.status === 200) e.data.quoteId = r.body.quoteId;
+    return r;
+  },
+  'trip.request': async (e, p) => {
+    if (!e.data.quoteId) return { status: 409, body: { title: 'Primero cotiza' } };
+    const r = await e.device.call('api', 'POST', '/v1/trips', { quoteId: e.data.quoteId, paymentMethod: p.paymentMethod ?? 'cash', ...(p.extra ?? {}) }, { headers: { 'Idempotency-Key': `sim-${Date.now()}-${Math.random().toString(36).slice(2, 12)}` } });
+    if (r.status === 201) e.data.tripId = r.body.id;
+    return r;
+  },
+  'trip.view': (e, p) => e.device.call('api', 'GET', `/v1/trips/${p.tripId || e.data.tripId}`),
+  'trip.pin': (e) => e.device.call('api', 'GET', `/v1/trips/${e.data.tripId}/pin`),
+  'trip.cancel': (e) => e.device.call('api', 'POST', `/v1/trips/${e.data.tripId}/cancel`, { reason: 'Cancelado desde el simulador' }),
+  'trip.rate': (e, p) => e.device.call('api', 'POST', `/v1/trips/${p.tripId || e.data.tripId}/rating`, { stars: Number(p.stars), comment: p.comment || undefined }),
+  'trip.contact': (e) => e.device.call('api', 'POST', `/v1/trips/${e.data.tripId}/contact-session`),
+  'trip.history': (e) => e.device.call('api', 'GET', '/v1/trips'),
+  'driver.online': async (e, p) => {
+    const vehicleId = e.data.vehicleId ?? (await e.device.call('api', 'GET', '/v1/driver/profile')).body?.vehicles?.[0]?.id;
+    const r = await e.device.call('api', 'POST', '/v1/driver/online', { vehicleId, location: PLACES[p.at] });
+    if (r.status === 200) e.data.location = PLACES[p.at];
+    return r;
+  },
+  'driver.offline': (e) => e.device.call('api', 'POST', '/v1/driver/offline'),
+  'driver.location': (e, p) => e.device.call('api', 'POST', '/v1/driver/location', { location: PLACES[p.at], mock: p.mock === 'true' }),
+  'driver.offers': (e) => e.device.call('api', 'GET', '/v1/driver/offers'),
+  'driver.accept': async (e) => {
+    const o = await e.device.call('api', 'GET', '/v1/driver/offers');
+    if (!o.body?.length) return { status: 404, body: { title: 'No hay ofertas pendientes (duran 15 s)' } };
+    const r = await e.device.call('api', 'POST', `/v1/driver/offers/${o.body[0].offerId}/accept`);
+    if (r.status === 200) e.data.tripId = r.body.tripId;
+    return r;
+  },
+  'driver.reject': async (e) => {
+    const o = await e.device.call('api', 'GET', '/v1/driver/offers');
+    if (!o.body?.length) return { status: 404, body: { title: 'No hay ofertas pendientes' } };
+    return e.device.call('api', 'POST', `/v1/driver/offers/${o.body[0].offerId}/reject`);
+  },
+  'driver.arrived': (e) => e.device.call('api', 'POST', `/v1/driver/trips/${e.data.tripId}/arrived`),
+  'driver.start': (e, p) => e.device.call('api', 'POST', `/v1/driver/trips/${e.data.tripId}/start`, { pin: p.pin }),
+  'driver.complete': (e) => e.device.call('api', 'POST', `/v1/driver/trips/${e.data.tripId}/complete`),
+  'driver.current': (e) => e.device.call('api', 'GET', '/v1/driver/trips/current'),
 
   // ----- Panel admin (módulo 3 y siguientes) -----
   'admin.me': (e) => e.device.call('api', 'GET', '/v1/admin/me'),

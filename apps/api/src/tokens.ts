@@ -4,3 +4,4 @@ export const KYC_PROVIDER = Symbol('KYC_PROVIDER');
 /** Cifrador para leer contactos del esquema identity (contexto KMS del servicio auth, solo lectura). */
 export const IDENTITY_CIPHER = Symbol('IDENTITY_CIPHER');
 export const STORAGE = Symbol('STORAGE');
+export const MAPS = Symbol('MAPS');
