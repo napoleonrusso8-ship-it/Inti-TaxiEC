@@ -37,6 +37,30 @@ export const SECTIONS = [
     ],
   },
   {
+    title: 'Módulo 2 · Verificación biométrica (proveedor simulado tipo Veriff)',
+    note: 'La app real abre el SDK del proveedor (documento + selfie con prueba de vida). Aquí tú haces de proveedor y eliges el resultado.',
+    items: [
+      { label: 'Leer consentimiento', action: 'consent.text', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: [{ value: 'biometric_kyc', label: 'Verificación biométrica' }, { value: 'audio_recording', label: 'Audio en emergencias' }, { value: 'trip_sharing', label: 'Compartir viajes' }, { value: 'companion_data', label: 'Datos de acompañante' }] }] },
+      { label: 'Aceptar consentimiento', action: 'consent.grant', hint: 'Separado, explícito y revocable.', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: [{ value: 'biometric_kyc', label: 'Verificación biométrica' }, { value: 'audio_recording', label: 'Audio en emergencias' }, { value: 'trip_sharing', label: 'Compartir viajes' }, { value: 'companion_data', label: 'Datos de acompañante' }] }] },
+      { label: 'Revocar consentimiento', action: 'consent.revoke', hint: 'Invalida el resultado y borra los datos en el proveedor.', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: [{ value: 'biometric_kyc', label: 'Verificación biométrica' }, { value: 'audio_recording', label: 'Audio en emergencias' }, { value: 'trip_sharing', label: 'Compartir viajes' }, { value: 'companion_data', label: 'Datos de acompañante' }] }] },
+      { label: 'Mis consentimientos', action: 'consents' },
+      { label: 'Iniciar verificación', action: 'kyc.start', fields: [{ name: 'kind', label: 'Tipo', type: 'select', options: [{ value: 'full', label: 'Completa (cédula + selfie)' }, { value: 'driver_reverify', label: 'Selfie de conductor' }] }] },
+      {
+        label: 'Proveedor: decidir',
+        action: 'kyc.decide',
+        hint: 'Para la selfie del conductor, usa la MISMA cédula; otra simula una cuenta prestada.',
+        fields: [
+          { name: 'status', label: 'Resultado', type: 'select', options: [{ value: 'approved', label: 'Aprobado' }, { value: 'declined', label: 'Rechazado (prueba de vida falló)' }, { value: 'resubmission_requested', label: 'Repetir' }] },
+          { name: 'documentNumber', label: 'Número de cédula', default: '0912345675' },
+          { name: 'givenNames', label: 'Nombres', default: 'Ana María' },
+          { name: 'familyNames', label: 'Apellidos', default: 'Pérez Loor' },
+        ],
+      },
+      { label: 'Estado de mi verificación', action: 'kyc.status', hint: 'Sin imágenes; la cédula enmascarada.' },
+      { label: 'Conductor: ¿selfie antes de conectarme?', action: 'reverify.check', roles: ['driver'] },
+    ],
+  },
+  {
     title: 'Avanzado · Llamada directa a la API',
     note: 'Firma la petición con la clave DPoP del dispositivo y adjunta el ticket de atestación.',
     items: [

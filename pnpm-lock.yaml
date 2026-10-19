@@ -21,6 +21,58 @@ importers:
         specifier: 3.2.7
         version: 3.2.7(@types/node@22.20.5)
 
+  apps/api:
+    dependencies:
+      '@intitaxi/auth-verifier':
+        specifier: workspace:*
+        version: link:../../packages/auth-verifier
+      '@intitaxi/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
+      '@intitaxi/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@intitaxi/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@intitaxi/nest-common':
+        specifier: workspace:*
+        version: link:../../packages/nest-common
+      '@nestjs/common':
+        specifier: 11.2.7
+        version: 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: 11.2.7
+        version: 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.7)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-express':
+        specifier: 11.2.7
+        version: 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.7)
+      ioredis:
+        specifier: 5.11.1
+        version: 5.11.1
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
+      reflect-metadata:
+        specifier: 0.2.2
+        version: 0.2.2
+      rxjs:
+        specifier: 7.8.2
+        version: 7.8.2
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@swc/core':
+        specifier: 1.16.18
+        version: 1.16.18
+      '@types/express':
+        specifier: 5.0.6
+        version: 5.0.6
+      unplugin-swc:
+        specifier: 1.5.9
+        version: 1.5.9(@swc/core@1.16.18)(rollup@4.64.10)
+
   apps/auth:
     dependencies:
       '@intitaxi/auth-verifier':
@@ -113,6 +165,33 @@ importers:
         specifier: 5.0.6
         version: 5.0.6
       '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+
+  e2e:
+    devDependencies:
+      '@intitaxi/api':
+        specifier: workspace:*
+        version: link:../apps/api
+      '@intitaxi/auth':
+        specifier: workspace:*
+        version: link:../apps/auth
+      '@intitaxi/db':
+        specifier: workspace:*
+        version: link:../packages/db
+      '@intitaxi/testkit':
+        specifier: workspace:*
+        version: link:../packages/testkit
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+      ioredis:
+        specifier: 5.11.1
+        version: 5.11.1
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
+      pg:
         specifier: 8.23.1
         version: 8.23.1
 

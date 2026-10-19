@@ -72,10 +72,11 @@ run('pnpm', ['build']);
 console.log('· Migrando la base de datos…');
 run('node', ['packages/db/dist/cli.js']);
 
+const apiEnv = { AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks', DEV_TOOLS: 'true', KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', ECU911_ADAPTER: 'mock' };
 const SERVICES = [
   { name: 'auth', cmd: 'apps/auth/dist/main.js', env: { PORT: '3001', PUBLIC_BASE_URL: 'http://localhost:3001' } },
-  { name: 'api', cmd: 'apps/api/dist/main.js', env: { PORT: '3002', PUBLIC_BASE_URL: 'http://localhost:3002', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks' } },
-  { name: 'sos', cmd: 'apps/api/dist/main-sos.js', env: { PORT: '3003', PUBLIC_BASE_URL: 'http://localhost:3003', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks' } },
+  { name: 'api', cmd: 'apps/api/dist/main.js', env: { PORT: '3002', PUBLIC_BASE_URL: 'http://localhost:3002', ...apiEnv } },
+  { name: 'sos', cmd: 'apps/api/dist/main-sos.js', env: { PORT: '3003', PUBLIC_BASE_URL: 'http://localhost:3003', ...apiEnv } },
   { name: 'realtime', cmd: 'apps/realtime/dist/main.js', env: { PORT: '3004', PUBLIC_BASE_URL: 'http://localhost:3004', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks' } },
   { name: 'admin', cmd: 'apps/admin-web/dist/server.js', env: { PORT: '4100' } },
   { name: 'sim', cmd: 'apps/simulator/dist/server.js', env: { SIM_PORT: '4000' } },

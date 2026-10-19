@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "e2e"
 # pnpm 10 bloquea los scripts de instalación por defecto; solo se permiten los listados aquí.
 onlyBuiltDependencies:
   - "@swc/core"

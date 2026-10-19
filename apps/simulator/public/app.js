@@ -99,7 +99,7 @@ function renderPanel() {
     h('div', { class: 'result', id: 'result' }, state.lastResult ? resultView(state.lastResult) : null),
     ...sections.map((s) =>
       h('div', {}, h('h3', {}, s.title), s.note ? h('p', { class: 'muted' }, s.note) : null,
-        h('div', { class: 'actions' }, ...s.items.map((it) => actionCard(d, it))))),
+        h('div', { class: 'actions' }, ...s.items.filter((it) => !it.roles || it.roles.includes(d.role)).map((it) => actionCard(d, it))))),
   );
 }
 

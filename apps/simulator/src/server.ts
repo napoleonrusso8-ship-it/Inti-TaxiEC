@@ -128,7 +128,7 @@ app.post(
     const entry = devices.get(req.params.id as string);
     if (!entry) return res.status(404).json({ error: 'dispositivo no existe' });
     const { action, params = {} } = req.body as { action: string; params?: Record<string, any> };
-    const result = await runAction(entry, action, params, { devices, webauthn });
+    const result = await runAction(entry, action, params, { services, devices, webauthn });
     record(entry.label, action, result);
     res.json(result);
   }),

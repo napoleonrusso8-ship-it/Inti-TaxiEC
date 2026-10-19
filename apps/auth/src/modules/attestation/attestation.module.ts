@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
+import type { Pool } from '@intitaxi/db';
+import { readFileSync } from 'node:fs';
 import type { AppConfig } from '../../config.js';
-import { ATTESTATION_VERIFIERS, CONFIG } from '../../tokens.js';
+import { ATTESTATION_VERIFIERS, CONFIG, PG_POOL } from '../../tokens.js';
+import { AppAttestVerifier } from './app-attest.js';
+import { PgAppAttestKeyStore } from './app-attest.store.js';
 import { AttestationController } from './attestation.controller.js';
 import {
   DevAttestationVerifier,
@@ -14,8 +18,8 @@ import {
   providers: [
     {
       provide: ATTESTATION_VERIFIERS,
-      inject: [CONFIG],
-      useFactory: (c: AppConfig) => {
+      inject: [CONFIG, PG_POOL],
+      useFactory: (c: AppConfig, pool: Pool) => {
         if (c.ATTESTATION_MODE === 'dev') {
           const dev = new DevAttestationVerifier(c.PLAY_INTEGRITY_ALLOW_BASIC_PACKAGES);
           return { android: dev, ios: dev };
@@ -28,7 +32,15 @@ import {
             allowBasicIntegrityPackages: c.PLAY_INTEGRITY_ALLOW_BASIC_PACKAGES,
             maxAgeMs: 2 * 60 * 1000,
           }),
-          ios: new PendingAppAttestVerifier(),
+          // Sin configuración de App Attest, iOS falla cerrado.
+          ios:
+            c.APP_ATTEST_ROOT_CA_FILE && c.APP_ATTEST_APP_IDS.length
+              ? new AppAttestVerifier(new PgAppAttestKeyStore(pool), {
+                  appIds: c.APP_ATTEST_APP_IDS,
+                  rootCaPem: readFileSync(c.APP_ATTEST_ROOT_CA_FILE, 'utf8'),
+                  environment: c.APP_ATTEST_ENVIRONMENT,
+                })
+              : new PendingAppAttestVerifier(),
         };
       },
     },

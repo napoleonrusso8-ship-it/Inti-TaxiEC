@@ -22,12 +22,15 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:ci-only@localhost:5432/intitaxi_test
       REDIS_URL: redis://localhost:6379/1
+      E2E_DATABASE_URL: postgres://postgres:ci-only@localhost:5432/intitaxi_e2e
+      E2E_REDIS_URL: redis://localhost:6379/5
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: PGPASSWORD=ci-only psql -h localhost -U postgres -c 'CREATE DATABASE intitaxi_e2e'
       - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test

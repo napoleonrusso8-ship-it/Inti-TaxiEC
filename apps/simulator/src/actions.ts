@@ -12,6 +12,7 @@ export interface SimEntry {
 }
 
 export interface ActionContext {
+  services: Record<string, string>;
   devices: Map<string, SimEntry>;
   webauthn: { rpId: string; origin: string };
 }
@@ -67,6 +68,32 @@ export const actions: Record<string, Handler> = {
     e.device.accessToken = '';
     return ok({ info: 'Token de acceso descartado en el simulador (la sesión sigue viva con el refresh token)' });
   },
+
+  // ----- Módulo 2: consentimiento y verificación biométrica -----
+  'consent.grant': async (e, p) => {
+    const t = await e.device.call('api', 'GET', `/v1/consents/texts/${p.purpose}`, undefined, { auth: false });
+    if (t.status !== 200) return t;
+    return e.device.call('api', 'POST', '/v1/consents', { purpose: p.purpose, textVersion: t.body.version, textSha256: t.body.sha256 });
+  },
+  'consent.text': (e, p) => e.device.call('api', 'GET', `/v1/consents/texts/${p.purpose}`, undefined, { auth: false }),
+  'consent.revoke': (e, p) => e.device.call('api', 'DELETE', `/v1/consents/${p.purpose}`),
+  consents: (e) => e.device.call('api', 'GET', '/v1/consents'),
+  'kyc.start': async (e, p) => {
+    const r = await e.device.call('api', 'POST', '/v1/kyc/sessions', { kind: p.kind ?? 'full' });
+    if (r.status === 201) e.data.kycSessionRef = String(r.body.sessionUrl).split('/').pop();
+    return r;
+  },
+  'kyc.decide': async (e, p, ctx) => {
+    if (!e.data.kycSessionRef) return { status: 409, body: { title: 'Primero inicia una verificación' } };
+    const res = await fetch(`${ctx.services.api}/v1/dev/kyc/sessions/${e.data.kycSessionRef}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: p.status, documentNumber: p.documentNumber || undefined, givenNames: p.givenNames || undefined, familyNames: p.familyNames || undefined, reason: p.reason || undefined }),
+    });
+    return { status: res.status, body: { proveedorSimulado: await res.json(), nota: 'El proveedor envió el webhook firmado; la API consultó la decisión.' } };
+  },
+  'kyc.status': (e) => e.device.call('api', 'GET', '/v1/kyc/status'),
+  'reverify.check': (e) => e.device.call('api', 'POST', '/v1/kyc/reverification/check'),
 
   // ----- Genérica: cualquier endpoint de cualquier servicio, firmada con DPoP -----
   call: (e, p) => e.device.call(p.service ?? 'api', p.method ?? 'GET', p.path, p.body),

@@ -1,4 +1,4 @@
-import type { ZodType } from 'zod';
+import type { z } from 'zod';
 
 /** Error de aplicación con estado HTTP y código estable. `detail` debe ser apto para el cliente (sin datos internos). */
 export class AppError extends Error {
@@ -22,7 +22,7 @@ export class OAuthError extends Error {
   }
 }
 
-export function parseInput<T>(schema: ZodType<T>, input: unknown): T {
+export function parseInput<S extends z.ZodTypeAny>(schema: S, input: unknown): z.output<S> {
   const r = schema.safeParse(input);
   if (!r.success) {
     const fields = [...new Set(r.error.issues.map((i) => i.path.join('.') || '(cuerpo)'))].join(', ');
