@@ -1,0 +1,16 @@
+{
+  "name": "@intitaxi/admin-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Panel web de administración de Inti Taxi: estático, passkey + DPoP (WebCrypto), servido detrás de ZTNA.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@intitaxi/auth-client": "workspace:*"
+  }
+}

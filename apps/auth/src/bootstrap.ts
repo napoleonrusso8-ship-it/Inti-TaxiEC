@@ -11,7 +11,7 @@ export async function createApp(config: AppConfig): Promise<INestApplication> {
     abortOnError: false,
     logger: config.NODE_ENV === 'test' ? ['error'] : ['log', 'warn', 'error'],
   });
-  configureHttpApp(app, { trustProxyHops: config.TRUST_PROXY_HOPS, rawBodyPaths: ['/internal/'] });
+  configureHttpApp(app, { trustProxyHops: config.TRUST_PROXY_HOPS, corsOrigins: config.CORS_ORIGINS, rawBodyPaths: ['/internal/'] });
   // Sin CORS: los clientes son apps nativas. El panel web usa su propio origen y BFF.
   return app;
 }

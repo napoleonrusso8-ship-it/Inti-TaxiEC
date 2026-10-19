@@ -175,6 +175,30 @@ app.get(
   }),
 );
 
+/**
+ * Puente de autenticador SOLO PARA DESARROLLO: permite iniciar sesión en el panel web (apps/admin-web)
+ * con las passkeys por software de los dispositivos simulados, porque en local no hay una passkey real
+ * sincronizada para rpId=localhost. Solo firma para los orígenes del panel configurados y el simulador
+ * escucha únicamente en 127.0.0.1 y se niega a arrancar en producción.
+ */
+const panelOrigins = env('SIM_ADMIN_WEB_ORIGINS', 'http://localhost:4100').split(',');
+app.get(
+  '/sim/dev-authenticator/devices',
+  wrap(async (_req, res) => {
+    res.json([...devices.values()].filter((d) => d.device.passkey && d.role !== 'admin' && d.userId).map((d) => ({ id: d.id, label: d.label, userId: d.userId })));
+  }),
+);
+app.post(
+  '/sim/dev-authenticator/assert',
+  wrap(async (req, res) => {
+    const { deviceId, options, origin } = req.body as { deviceId?: string; options?: { challenge?: string }; origin?: string };
+    const d = deviceId ? devices.get(deviceId) : undefined;
+    if (!d?.device.passkey || !options?.challenge || !origin || !panelOrigins.includes(origin)) return res.status(400).json({ error: 'solicitud inválida' });
+    record(d.label, 'panel web: passkey (puente de desarrollo)', { status: 200, body: { origin } });
+    res.json(d.device.passkey.assert({ challenge: options.challenge }, { origin }));
+  }),
+);
+
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: String((err as Error)?.message ?? err) });
 });

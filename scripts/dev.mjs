@@ -37,7 +37,7 @@ if (!existsSync(envFile)) {
       'SMS_PROVIDER=devbox',
       'EMAIL_PROVIDER=devbox',
       'WEBAUTHN_RP_ID=localhost',
-      'WEBAUTHN_ORIGINS=http://localhost:3001',
+      'WEBAUTHN_ORIGINS=http://localhost:3001,http://localhost:4100',
       `INTERNAL_SIGNING_SECRET=${rnd()}`,
       `MANIFEST_SIGNING_SECRET=${rnd()}`,
       `WEBHOOK_SECRET_KYC=${rnd()}`,
@@ -85,12 +85,14 @@ console.log('· Migrando la base de datos…');
 run('node', ['packages/db/dist/cli.js']);
 
 const apiEnv = { TRACKING_BASE_URL: 'http://localhost:3004', SUBJECT_PORTAL_URL: 'http://localhost:3002', INTERNAL_AUTH_URL: 'http://localhost:3001', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks', DEV_TOOLS: 'true', KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', ECU911_ADAPTER: 'mock', ECU911_AUTO_ESCALATE_SECONDS: '60' };
+// El panel web (4100) llama a auth/api/sos desde el navegador: CORS solo para ese origen.
+const panel = { CORS_ORIGINS: 'http://localhost:4100' };
 const SERVICES = [
-  { name: 'auth', cmd: 'apps/auth/dist/main.js', env: { PORT: '3001', PUBLIC_BASE_URL: 'http://localhost:3001' } },
-  { name: 'api', cmd: 'apps/api/dist/main.js', env: { PORT: '3002', PUBLIC_BASE_URL: 'http://localhost:3002', ...apiEnv } },
-  { name: 'sos', cmd: 'apps/api/dist/main-sos.js', env: { PORT: '3003', PUBLIC_BASE_URL: 'http://localhost:3003', ...apiEnv } },
+  { name: 'auth', cmd: 'apps/auth/dist/main.js', env: { PORT: '3001', PUBLIC_BASE_URL: 'http://localhost:3001', WEBAUTHN_ORIGINS: 'http://localhost:3001,http://localhost:4100', ...panel } },
+  { name: 'api', cmd: 'apps/api/dist/main.js', env: { PORT: '3002', PUBLIC_BASE_URL: 'http://localhost:3002', ...apiEnv, ...panel } },
+  { name: 'sos', cmd: 'apps/api/dist/main-sos.js', env: { PORT: '3003', PUBLIC_BASE_URL: 'http://localhost:3003', ...apiEnv, ...panel } },
   { name: 'realtime', cmd: 'apps/realtime/dist/main.js', env: { PORT: '3004', PUBLIC_BASE_URL: 'http://localhost:3004', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks' } },
-  { name: 'admin', cmd: 'apps/admin-web/dist/server.js', env: { PORT: '4100' } },
+  { name: 'admin', cmd: 'apps/admin-web/dist/server.js', env: { PORT: '4100', ADMIN_DEV_AUTHENTICATOR_URL: 'http://localhost:4000' } },
   { name: 'sim', cmd: 'apps/simulator/dist/server.js', env: { SIM_PORT: '4000' } },
 ];
 

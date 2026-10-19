@@ -6,15 +6,18 @@ import { SimDevice, type Integrity } from '@intitaxi/testkit';
 import { Redis } from 'ioredis';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
-export type ServiceName = 'auth' | 'api' | 'sos' | 'realtime';
+export type ServiceName = 'auth' | 'api' | 'sos' | 'realtime' | 'admin';
 
 const ENTRY: Record<ServiceName, string> = {
   auth: 'apps/auth/dist/main.js',
   api: 'apps/api/dist/main.js',
   sos: 'apps/api/dist/main-sos.js',
   realtime: 'apps/realtime/dist/main.js',
+  admin: 'apps/admin-web/dist/server.js',
 };
-const PORT: Record<ServiceName, number> = { auth: 39101, api: 39102, sos: 39103, realtime: 39104 };
+const PORT: Record<ServiceName, number> = { auth: 39101, api: 39102, sos: 39103, realtime: 39104, admin: 39105 };
+/** Origen del panel web en las pruebas (CORS y WebAuthn). */
+export const PANEL_ORIGIN = 'http://localhost:39105';
 
 function requiredEnv(name: string) {
   const v = process.env[name];
@@ -69,6 +72,7 @@ export class Stack {
       AUTH_ISSUER: this.urls.auth ?? 'http://localhost:39101',
       AUTH_JWKS_URL: `${this.urls.auth ?? 'http://localhost:39101'}/jwks`,
       DEV_TOOLS: 'true',
+      CORS_ORIGINS: PANEL_ORIGIN,
     };
     const perService: Record<ServiceName, Record<string, string>> = {
       auth: {
@@ -78,11 +82,12 @@ export class Stack {
         JWT_SIGNING_KEY_PEM: privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(),
         JWT_SIGNING_KID: 'e2e-1',
         WEBAUTHN_RP_ID: 'localhost',
-        WEBAUTHN_ORIGINS: 'http://localhost:39101',
+        WEBAUTHN_ORIGINS: `http://localhost:39101,${PANEL_ORIGIN}`,
       },
       api: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key(), WEBHOOK_SECRET_KYC: key(), KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', WEBHOOK_SECRET_PAYMENTS: key(), PAYOUT_MIN_CENTS: '100', MANIFEST_SIGNING_KEY_PEM: manifestKey, SAFETY_PIN_PEPPER: key(), ECU911_AUTO_ESCALATE_SECONDS: '5', TRACKING_BASE_URL: 'http://localhost:39104', MATCHING_SWEEP_MS: '250', MATCHING_OFFER_TTL_SECONDS: '5', REVERIFY_PROBABILITY: '0' },
       sos: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key() },
       realtime: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key() },
+      admin: { ADMIN_AUTH_URL: 'http://localhost:39101', ADMIN_API_URL: 'http://localhost:39102', ADMIN_SOS_URL: 'http://localhost:39103' },
     };
     // api y sos comparten claves de cifrado (mismo dominio de datos).
     perService.sos = { ...perService.api };

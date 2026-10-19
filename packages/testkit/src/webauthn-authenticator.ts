@@ -46,8 +46,8 @@ export class SoftwareAuthenticator {
     return b64u(this.credentialId);
   }
 
-  #clientData(type: string, challenge: string) {
-    return Buffer.from(JSON.stringify({ type, challenge, origin: this.origin, crossOrigin: false }));
+  #clientData(type: string, challenge: string, origin = this.origin) {
+    return Buffer.from(JSON.stringify({ type, challenge, origin, crossOrigin: false }));
   }
 
   register(options: { challenge: string; user: { id: string } }) {
@@ -69,13 +69,14 @@ export class SoftwareAuthenticator {
     };
   }
 
-  assert(options: { challenge: string }, opts: { userVerified?: boolean; counter?: number } = {}) {
+  /** `origin` permite firmar como si el navegador estuviera en otro origen del mismo rpId (puente de desarrollo del panel web). */
+  assert(options: { challenge: string }, opts: { userVerified?: boolean; counter?: number; origin?: string } = {}) {
     this.counter = opts.counter ?? this.counter + 1;
     const counter = Buffer.alloc(4);
     counter.writeUInt32BE(this.counter);
     const flags = 0x01 | (opts.userVerified === false ? 0 : 0x04);
     const authData = Buffer.concat([sha(this.rpId), Buffer.from([flags]), counter]);
-    const clientData = this.#clientData('webauthn.get', options.challenge);
+    const clientData = this.#clientData('webauthn.get', options.challenge, opts.origin);
     const signature = sign('sha256', Buffer.concat([authData, sha(clientData)]), this.#priv);
     return {
       id: this.id,

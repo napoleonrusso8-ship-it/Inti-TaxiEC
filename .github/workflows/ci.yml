@@ -32,6 +32,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: PGPASSWORD=ci-only psql -h localhost -U postgres -c 'CREATE DATABASE intitaxi_e2e'
       - run: pnpm build
+      # Chromium para la prueba e2e del panel web (passkey virtual + WebCrypto).
+      - run: pnpm --filter @intitaxi/e2e exec playwright-core install --with-deps chromium-headless-shell
       - run: pnpm typecheck
       - run: pnpm test
 

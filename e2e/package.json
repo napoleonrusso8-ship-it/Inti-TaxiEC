@@ -11,6 +11,7 @@
   "devDependencies": {
     "@intitaxi/api": "workspace:*",
     "@intitaxi/auth": "workspace:*",
+    "@intitaxi/auth-client": "workspace:*",
     "@intitaxi/db": "workspace:*",
     "@intitaxi/domain": "workspace:*",
     "@intitaxi/testkit": "workspace:*",
@@ -18,6 +19,6 @@
     "ioredis": "5.11.1",
     "jose": "6.2.12",
     "pg": "8.23.1",
-    "@intitaxi/auth-client": "workspace:*"
+    "playwright-core": "1.56.1"
   }
 }

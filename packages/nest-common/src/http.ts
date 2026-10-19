@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import { randomUUID } from 'node:crypto';
 
 /** Endurecimiento HTTP común: proxies de confianza, cabeceras, request id, límites de cuerpo. */
-export function configureHttpApp(app: INestApplication, opts: { trustProxyHops: number; jsonLimit?: string; rawBodyPaths?: string[] }) {
+export function configureHttpApp(app: INestApplication, opts: { trustProxyHops: number; jsonLimit?: string; rawBodyPaths?: string[]; corsOrigins?: string[] }) {
   const ex = app as NestExpressApplication;
   // IP real solo a través del número exacto de proxies de confianza (ALB): evita falsificar X-Forwarded-For.
   ex.set('trust proxy', opts.trustProxyHops);
@@ -24,6 +24,7 @@ export function configureHttpApp(app: INestApplication, opts: { trustProxyHops: 
     res.setHeader('Cache-Control', 'no-store');
     next();
   });
+  if (opts.corsOrigins?.length) ex.use(cors(opts.corsOrigins));
   // Los webhooks necesitan el cuerpo exacto para verificar la firma HMAC.
   ex.useBodyParser('json', {
     limit: opts.jsonLimit ?? '32kb',
@@ -34,4 +35,28 @@ export function configureHttpApp(app: INestApplication, opts: { trustProxyHops: 
   });
   ex.useBodyParser('urlencoded', { limit: '8kb', extended: false });
   app.enableShutdownHooks();
+}
+
+/**
+ * CORS mínimo y explícito para el panel web: lista blanca exacta de orígenes, sin cookies
+ * (los tokens van en cabeceras DPoP, nunca en cookies, así que no hay CSRF), preflight en caché 10 min.
+ * Un origen no listado no recibe cabeceras CORS y el navegador bloquea la respuesta.
+ */
+export function cors(origins: string[]) {
+  const allowed = new Set(origins);
+  return (req: Request, res: Response, next: NextFunction) => {
+    const origin = req.header('origin');
+    res.vary('Origin');
+    if (!origin || !allowed.has(origin)) return next();
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Expose-Headers', 'X-Request-Id, Retry-After');
+    if (req.method === 'OPTIONS' && req.header('access-control-request-method')) {
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, DPoP, Content-Type, Idempotency-Key, X-Request-Id');
+      res.setHeader('Access-Control-Max-Age', '600');
+      res.status(204).end();
+      return;
+    }
+    next();
+  };
 }

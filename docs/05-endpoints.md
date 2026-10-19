@@ -148,13 +148,15 @@
 | GET/POST/PUT | `/v1/admin/routes` · `/{id}` · `/{id}/directions/{dir}/stops` · `/{id}/fares` · `/{id}/schedules` · POST `/{id}/pause` | CRUD de Taxi Ruta (borrador → publicar; una ruta activa se pausa para editarla) | `route_manager` |
 | POST | `/v1/admin/routes/{id}/validate` | Valida el orden de las paradas con la API de mapas y devuelve correcciones propuestas | `route_manager` |
 | POST | `/v1/admin/routes/{id}/publish-request` · `/publish-decision` | Publicar (cuatro ojos: quien solicita no aprueba) | `route_manager` + segundo aprobador |
-| GET/PATCH | `/v1/admin/disputes` · `/{id}` | Disputas | `support` |
+| GET/POST | `/v1/admin/disputes?status` · `/{id}?reason=` · `/{id}/assign` · `/{id}/resolve` | Disputas: el relato solo con motivo auditado; resolución con reembolso | `support` |
+| POST/GET | `/v1/trips/{id}/disputes` · `/v1/disputes` | Reclamo de un viaje terminado (≤ 30 días) | Solicitante o conductor del viaje |
+| GET/POST | `/v1/admin/kyc/reviews` · `/{id}/decision` | Documentos duplicados: rechazar o transferir identidad | `fraud_analyst` |
 | GET | `/v1/admin/fraud/signals` · POST `/cases` | Fraude | `fraud_analyst` |
 | GET | `/v1/admin/incidents` · `/{id}` | Centro de monitoreo SOS | `sos_operator` |
 | POST | `/v1/admin/incidents/{id}/authority-link` | Generar el enlace firmado para la autoridad (base legal + segundo aprobador) | `sos_operator` + `dpo` |
 | GET | `/v1/admin/trips/{id}/manifest` | Ver el manifiesto (motivo obligatorio, auditado) | `support` / `sos_operator` / `auditor` |
-| GET | `/v1/admin/audit-log` | Consulta de auditoría (solo lectura) | `auditor` |
-| GET/PATCH | `/v1/admin/privacy/requests` | Gestión de solicitudes ARCO+ | `dpo` |
+| GET/POST | `/v1/admin/audit` · `/v1/admin/audit/verify` | Consulta de auditoría (solo lectura) y verificación de la cadena de hash | `auditor` |
+| GET/POST | `/v1/admin/privacy-requests?status` · `/{id}/decision` | Gestión de solicitudes de titulares (respeta la retención legal) | `dpo` |
 | GET/POST/DELETE | `/v1/admin/users/{id}/roles` | Asignación de roles (con expiración) | `super_admin` |
 | GET | `/v1/admin/metrics` | Métricas agregadas (sin PII) | Cualquier rol admin |
 

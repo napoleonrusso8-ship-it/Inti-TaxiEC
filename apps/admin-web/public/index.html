@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Inti Taxi · Administración</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <main id="login" class="login hidden">
+    <div class="login-box">
+      <h1>Inti Taxi</h1>
+      <p class="muted">Panel de administración · acceso solo con passkey</p>
+      <button id="login-passkey" type="button">Entrar con passkey</button>
+      <div id="dev-login" class="dev hidden">
+        <p class="muted">Desarrollo: usar la passkey de un dispositivo del simulador</p>
+        <select id="dev-device"></select>
+        <button id="login-dev" type="button" class="secondary">Entrar (puente del simulador)</button>
+      </div>
+      <p id="login-error" class="error"></p>
+      <p class="muted small">La sesión vive solo en esta pestaña: al recargar o cerrar, se cierra. Las acciones de escritura piden una passkey de hace menos de 15 min.</p>
+    </div>
+  </main>
+  <div id="shell" class="shell hidden">
+    <nav>
+      <div class="brand">Inti Taxi</div>
+      <ul id="menu"></ul>
+      <div class="who"><span id="who"></span><button id="logout" type="button" class="secondary">Salir</button></div>
+    </nav>
+    <section id="view"></section>
+    <aside id="drawer" class="drawer"></aside>
+  </div>
+  <div id="toast" class="toast hidden" role="status"></div>
+</body>
+</html>

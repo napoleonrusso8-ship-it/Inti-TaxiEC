@@ -23,6 +23,9 @@
         "REDIS_URL",
         "E2E_DATABASE_URL",
         "E2E_REDIS_URL"
+      ],
+      "passThroughEnv": [
+        "PLAYWRIGHT_BROWSERS_PATH"
       ]
     },
     "test:unit": {

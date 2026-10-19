@@ -11,6 +11,8 @@ export const infraEnvShape = {
   /** URL pública canónica del servicio. Se usa para validar `htu` de DPoP; nunca se deriva de la cabecera Host. */
   PUBLIC_BASE_URL: z.string().url(),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
+  /** Orígenes del navegador autorizados (solo el panel de administración). Vacío = sin CORS. */
+  CORS_ORIGINS: csv.default(''),
 
   DATABASE_URL: z.string().min(1),
   DATABASE_SSL_CA: z.string().optional(),
@@ -52,6 +54,7 @@ export function checkInfraConfig(c: InfraConfig, addIssue: (path: string, messag
   };
   prod(c.KEY_PROVIDER === 'kms', 'KEY_PROVIDER', 'debe ser kms');
   prod(c.PUBLIC_BASE_URL.startsWith('https://'), 'PUBLIC_BASE_URL', 'debe usar https');
+  prod(c.CORS_ORIGINS.every((o) => o.startsWith('https://')), 'CORS_ORIGINS', 'solo orígenes https');
   prod(!!c.DATABASE_SSL_CA, 'DATABASE_SSL_CA', 'la conexión a Postgres debe usar TLS');
   prod(c.REDIS_TLS, 'REDIS_TLS', 'la conexión a Redis debe usar TLS');
   prod(c.SMS_PROVIDER === 'infobip', 'SMS_PROVIDER', 'no se permite el proveedor de consola/devbox');
