@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Seguimiento de viaje · Inti Taxi</title>
+  <link rel="stylesheet" href="/static/leaflet.css" />
+  <link rel="stylesheet" href="/static/track.css" />
+</head>
+<body data-tiles="{{TILES}}">
+  <header>
+    <strong>Inti Taxi</strong>
+    <span id="status" class="status">Conectando…</span>
+  </header>
+  <section id="card" class="card" hidden>
+    <div><span class="label">Conductor</span><span id="driver"></span></div>
+    <div><span class="label">Vehículo</span><span id="vehicle"></span></div>
+    <div><span class="label">Placa</span><span id="plate" class="plate"></span></div>
+  </section>
+  <div id="map" role="img" aria-label="Mapa con la ubicación del taxi"></div>
+  <footer>Enlace temporal: caduca 15 minutos después de terminar el viaje. En una emergencia llama al <a href="tel:911">911</a>.</footer>
+  <script src="/static/leaflet.js"></script>
+  <script src="/static/track.js"></script>
+</body>
+</html>

@@ -147,6 +147,19 @@ export const SECTIONS = [
     ],
   },
   {
+    title: 'Módulo 6 · En vivo (mapa, chat y enlaces)',
+    roles: MOBILE,
+    note: 'Necesita un viaje aceptado. El enlace de seguimiento se abre en el navegador (página pública con mapa).',
+    items: [
+      { label: 'Escuchar en vivo', action: 'rt.listen', hint: 'WebSocket autenticado con DPoP.' },
+      { label: 'Ver mensajes recibidos', action: 'rt.messages' },
+      { label: 'Enviar chat', action: 'chat.send', hint: 'Los teléfonos y correos se ocultan.', fields: [{ name: 'text', label: 'Mensaje', default: 'Estoy en la puerta 3, mi número es 0991234567' }] },
+      { label: 'Compartir viaje con un contacto', action: 'trip.share', roles: ['passenger'], hint: 'Requiere el consentimiento "Compartir viajes" (módulo 2).' },
+      { label: 'Conducir automáticamente', action: 'driver.drive', roles: ['driver'], hint: 'Hacia la recogida o el destino; publica la ubicación cada 2 s.' },
+      { label: 'Detener conducción', action: 'driver.stop', roles: ['driver'] },
+    ],
+  },
+  {
     title: 'Panel admin · Revisión de conductores',
     roles: ['admin'],
     note: 'Sesión iniciada solo con passkey. Las escrituras exigen passkey de los últimos 15 minutos.',

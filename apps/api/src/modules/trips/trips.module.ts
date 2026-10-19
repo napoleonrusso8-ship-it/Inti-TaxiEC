@@ -7,6 +7,8 @@ import { PresenceService } from './presence.service.js';
 import { DriverTripsController, TripsController } from './trips.controller.js';
 import { TripEvents } from './trip-events.js';
 import { TripsService } from './trips.service.js';
+import { RealtimeBridge } from './realtime-bridge.service.js';
+import { TripTrackingService } from './trip-tracking.service.js';
 
 @Module({})
 export class TripsModule {
@@ -21,8 +23,10 @@ export class TripsModule {
         PresenceService,
         MatchingService,
         TripsService,
+        RealtimeBridge,
+        TripTrackingService,
       ],
-      exports: [TripsService, TripEvents, PresenceService, MatchingService, MAPS],
+      exports: [TripsService, TripEvents, PresenceService, MatchingService, MAPS, RealtimeBridge, TripTrackingService],
     };
   }
 }

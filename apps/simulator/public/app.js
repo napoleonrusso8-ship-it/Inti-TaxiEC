@@ -146,8 +146,12 @@ function actionCard(d, it) {
 }
 
 function resultView(r) {
-  return h('div', {}, h('div', { class: 'row' }, h('strong', {}, `Resultado: ${r.label}`), h('span', { class: `pill ${statusClass(r.status)}` }, `HTTP ${r.status}`)),
-    h('pre', {}, JSON.stringify(r.body, null, 2)));
+  const json = JSON.stringify(r.body, null, 2);
+  // Enlaces útiles (seguimiento, portal del titular): se ofrecen como enlace explícito.
+  const links = [...new Set(json.match(/https?:\/\/[^\s"]+\/(t|p)\/[A-Za-z0-9_-]{43}/g) ?? [])];
+  return h('div', {}, h('div', { class: 'row' }, h('strong', {}, `Resultado: ${r.label}`), h('span', { class: `pill ${statusClass(r.status)}` }, `HTTP ${r.status}`),
+    ...links.map((u) => h('a', { href: u, target: '_blank', rel: 'noopener noreferrer' }, u.includes('/t/') ? 'Abrir seguimiento' : 'Abrir portal del titular'))),
+    h('pre', {}, json));
 }
 
 // ---------- Bandeja ----------
@@ -160,7 +164,8 @@ function renderInbox() {
       h('div', { class: 'row between' }, h('span', { class: 'pill' }, m.channel === 'sms' ? 'SMS' : 'Correo'), h('span', { class: 'muted' }, `${m.to} · ${new Date(m.at).toLocaleTimeString()}`)),
       m.subject ? h('strong', {}, m.subject) : null,
       code && m.channel === 'sms' ? h('div', { class: 'code-big' }, code) : null,
-      h('pre', {}, m.text));
+      h('pre', {}, m.text),
+      ...[...new Set(m.text.match(/https?:\/\/[^\s]+\/(t|p)\/[A-Za-z0-9_-]{43}/g) ?? [])].map((u) => h('a', { href: u, target: '_blank', rel: 'noopener noreferrer' }, u.includes('/t/') ? 'Abrir seguimiento en vivo' : 'Abrir portal del titular')));
   }));
   if (!state.inbox.length) ul.append(h('li', { class: 'muted' }, 'Sin mensajes'));
 }

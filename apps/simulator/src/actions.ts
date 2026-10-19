@@ -1,4 +1,4 @@
-import { eicarAsPng, sha256Hex, tinyPdf, tinyPng, validCedula, type HttpResult, type SimDevice } from '@intitaxi/testkit';
+import { eicarAsPng, sha256Hex, tinyPdf, tinyPng, validCedula, type HttpResult, type SimDevice, type SimSocket } from '@intitaxi/testkit';
 
 export interface SimEntry {
   id: string;
@@ -199,6 +199,50 @@ export const actions: Record<string, Handler> = {
   'driver.start': (e, p) => e.device.call('api', 'POST', `/v1/driver/trips/${e.data.tripId}/start`, { pin: p.pin }),
   'driver.complete': (e) => e.device.call('api', 'POST', `/v1/driver/trips/${e.data.tripId}/complete`),
   'driver.current': (e) => e.device.call('api', 'GET', '/v1/driver/trips/current'),
+
+  // ----- Módulo 6: tiempo real -----
+  'driver.drive': async (e) => {
+    const cur = await e.device.call('api', 'GET', '/v1/driver/trips/current');
+    if (!cur.body) return { status: 409, body: { title: 'No tienes un viaje activo' } };
+    const target = ['accepted', 'arrived'].includes(cur.body.status) ? cur.body.origin : cur.body.destination;
+    const from = e.data.location ?? cur.body.driverLocation ?? target;
+    clearInterval(e.data.driveTimer);
+    // Avanza ~80 m cada 2 s (40 m/s máx., bajo el umbral de salto imposible).
+    const steps = Math.max(1, Math.ceil(Math.hypot((target.lat - from.lat) * 111_000, (target.lng - from.lng) * 111_000) / 80));
+    let i = 0;
+    e.data.driveTimer = setInterval(async () => {
+      i += 1;
+      const p = { lat: from.lat + ((target.lat - from.lat) * i) / steps, lng: from.lng + ((target.lng - from.lng) * i) / steps };
+      e.data.location = p;
+      await e.device.call('api', 'POST', '/v1/driver/location', { location: p }).catch(() => {});
+      if (i >= steps) clearInterval(e.data.driveTimer);
+    }, 2000);
+    return ok({ info: `Conduciendo hacia ${['accepted', 'arrived'].includes(cur.body.status) ? 'el punto de recogida' : 'el destino'} en ${steps} pasos (~${steps * 2} s)` });
+  },
+  'driver.stop': async (e) => {
+    clearInterval(e.data.driveTimer);
+    return ok({ info: 'Detenido' });
+  },
+  'trip.share': (e) => e.device.call('api', 'POST', `/v1/trips/${e.data.tripId}/share-links`),
+  'rt.listen': async (e) => {
+    const sock = (e.data.socket as SimSocket | undefined) ?? (await e.device.openSocket());
+    e.data.socket = sock;
+    const tripId = e.data.tripId;
+    if (tripId) sock.send({ type: 'subscribe', channel: `trip:${tripId}` });
+    await new Promise((r) => setTimeout(r, 300));
+    return ok({ conectado: !sock.closed, suscrito: tripId ? `trip:${tripId}` : 'sin viaje', mensajes: sock.messages.slice(-5) });
+  },
+  'rt.messages': async (e) => {
+    const sock = e.data.socket as SimSocket | undefined;
+    return ok(sock ? { cerrado: sock.closed, mensajes: sock.messages.slice(-30) } : { info: 'Primero "Escuchar en vivo"' });
+  },
+  'chat.send': async (e, p) => {
+    const sock = e.data.socket as SimSocket | undefined;
+    if (!sock) return { status: 409, body: { title: 'Primero "Escuchar en vivo"' } };
+    sock.send({ type: 'chat', tripId: e.data.tripId, text: p.text });
+    await new Promise((r) => setTimeout(r, 300));
+    return ok({ enviado: p.text, ultimos: sock.messages.filter((m) => m.type === 'chat').slice(-5) });
+  },
 
   // ----- Panel admin (módulo 3 y siguientes) -----
   'admin.me': (e) => e.device.call('api', 'GET', '/v1/admin/me'),

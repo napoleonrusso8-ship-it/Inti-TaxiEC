@@ -210,6 +210,13 @@ export class TripsService {
     };
   }
 
+  /** Tarjeta del conductor para el seguimiento (sin calificaciones detalladas). */
+  async driverCardForTracking(driverId: string, tripId: string) {
+    const t = await this.load(tripId);
+    const c = await this.driverCard(driverId, t?.vehicle_id ?? null);
+    return { firstName: c.firstName, vehicle: c.vehicle, identityVerified: c.identityVerified };
+  }
+
   async pin(userId: string, tripId: string) {
     const t = await this.load(tripId);
     if (!t || t.requester_user_id !== userId) throw new AppError(404, 'not_found', 'Recurso no encontrado');

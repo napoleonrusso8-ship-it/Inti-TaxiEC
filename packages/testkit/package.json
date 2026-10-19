@@ -3,16 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Dispositivos simulados para pruebas y el simulador. NUNCA se incluye en builds de producción.",
+  "description": "Dispositivos simulados para pruebas y el simulador. NUNCA se incluye en builds de producci\u00f3n.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@intitaxi/auth-client": "workspace:*",
-    "jose": "6.2.12"
+    "jose": "6.2.12",
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1"
   }
 }

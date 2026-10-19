@@ -9,6 +9,8 @@ import { BLIND_INDEX, CONFIG, FIELD_CIPHER, PG_POOL } from '../../tokens.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { TripEvents, type TripStatusEvent } from '../trips/trip-events.js';
 import { tripAad, TripsService, type TripRow } from '../trips/trips.service.js';
+import { RealtimeBridge } from '../trips/realtime-bridge.service.js';
+import { TripTrackingService } from '../trips/trip-tracking.service.js';
 import { normalizePerson, PartyInput, PersonInput, type NormalizedPerson } from './person-input.js';
 
 const Alias = z.string().max(40).regex(/^[^<>]*$/).optional();
@@ -58,6 +60,8 @@ export class PeopleService implements OnModuleInit, OnModuleDestroy {
     @Inject(NotificationsService) private readonly notify: NotificationsService,
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(RealtimeBridge) private readonly bridge: RealtimeBridge,
+    @Inject(TripTrackingService) private readonly tracking: TripTrackingService,
   ) {}
 
   onModuleInit() {
@@ -234,11 +238,35 @@ export class PeopleService implements OnModuleInit, OnModuleDestroy {
 
   async createShareLink(tripId: string, audience: 'third_party' | 'companion' | 'trusted_contact' | 'requester', personId: string | null, createdBy: string | null) {
     const token = randomToken(32);
+    const hash = sha256(token);
     await this.pool.query(
       `INSERT INTO trips.share_links (id, trip_id, audience, person_id, token_hash, expires_at, created_by) VALUES ($1, $2, $3, $4, $5, now() + interval '6 hours', $6)`,
-      [randomUUID(), tripId, audience, personId, sha256(token), createdBy],
+      [randomUUID(), tripId, audience, personId, hash, createdBy],
     );
+    await this.bridge.registerShareLink(hash, tripId, 6 * 3600);
     return `${this.config.TRACKING_BASE_URL}/t/${token}`;
+  }
+
+  /** Compartir el viaje en vivo con un contacto de confianza (requiere el consentimiento "trip_sharing"). */
+  async shareWithContact(userId: string, tripId: string, req: AppRequest) {
+    const t = await this.trips.load(tripId);
+    const role = t ? await this.trips.participantRole(userId, t) : null;
+    if (!t || !role || role === 'driver') throw new AppError(404, 'not_found', 'Recurso no encontrado');
+    if (!['matching', 'accepted', 'arrived', 'in_progress'].includes(t.status)) throw new AppError(409, 'trip_not_active', 'Solo se comparte un viaje activo');
+    const consent = await this.pool.query(`SELECT action FROM kyc.current_consents WHERE user_id = $1 AND purpose = 'trip_sharing'`, [userId]);
+    if (consent.rows[0]?.action !== 'grant') throw new AppError(403, 'consent_required', 'Acepta primero el consentimiento para compartir viajes');
+    const active = await this.pool.query(`SELECT count(*)::int AS n FROM trips.share_links WHERE trip_id = $1 AND created_by = $2 AND expires_at > now() AND revoked_at IS NULL`, [tripId, userId]);
+    if (active.rows[0].n >= 5) throw new AppError(429, 'too_many_links', 'Máximo 5 enlaces activos por viaje');
+    const url = await this.createShareLink(tripId, 'trusted_contact', null, userId);
+    await this.audit.record({ action: 'trip.share_link', resourceType: 'trip', resourceId: tripId }, req);
+    return { url, expiresIn: 6 * 3600, note: 'Caduca 15 minutos después de terminar el viaje' };
+  }
+
+  async revokeShareLinks(userId: string, tripId: string, req: AppRequest) {
+    const r = await this.pool.query<{ token_hash: Buffer }>(`UPDATE trips.share_links SET revoked_at = now() WHERE trip_id = $1 AND created_by = $2 AND revoked_at IS NULL RETURNING token_hash`, [tripId, userId]);
+    for (const l of r.rows) await this.bridge.registerShareLink(l.token_hash, tripId, 1);
+    await this.audit.record({ action: 'trip.share_links_revoked', resourceType: 'trip', resourceId: tripId, metadata: { count: r.rowCount } }, req);
+    return { revoked: r.rowCount };
   }
 
   // ---------- Lectura (con auditoría) ----------
@@ -404,6 +432,7 @@ export class PeopleService implements OnModuleInit, OnModuleDestroy {
        SELECT r.person_id FROM people.data_subject_requests r JOIN trips.trip_parties tp ON tp.person_id = r.person_id JOIN trips.trips t ON t.id = tp.trip_id
        WHERE r.status = 'deferred_legal_hold' AND t.status IN ('completed', 'cancelled', 'no_drivers') AND NOT t.incident_hold`,
     );
+    await this.tracking.generalizeOld();
     const n = await this.#anonymize(this.pool, rows.map((r) => r.person_id));
     await this.pool.query(`UPDATE people.data_subject_requests SET status = 'completed', resolved_at = now() WHERE status = 'deferred_legal_hold' AND person_id = ANY($1)`, [rows.map((r) => r.person_id)]);
     await this.pool.query(`UPDATE trips.trips SET origin_label_enc = NULL, dest_label_enc = NULL WHERE retention_until < now() AND NOT incident_hold AND (origin_label_enc IS NOT NULL OR dest_label_enc IS NOT NULL)`);

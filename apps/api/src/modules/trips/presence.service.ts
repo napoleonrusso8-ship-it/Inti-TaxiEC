@@ -18,6 +18,9 @@ export interface DriverLocation extends LatLng {
  */
 @Injectable()
 export class PresenceService {
+  /** Lo registra el módulo de viajes para guardar la ruta y publicarla en tiempo real. */
+  onTripLocation?: (tripId: string, loc: DriverLocation) => Promise<void>;
+
   constructor(@Inject(REDIS) private readonly redis: Redis) {}
 
   async goOnline(driverId: string, info: { vehicleId: string; seats: number; sessionId: string }, loc: DriverLocation) {
@@ -61,6 +64,8 @@ export class PresenceService {
     const m = this.redis.multi().set(`driver:loc:${driverId}`, JSON.stringify(loc), 'EX', LOC_TTL);
     if (opts.available) m.geoadd(GEO_KEY, loc.lng, loc.lat, driverId);
     await m.exec();
+    const tripId = (await this.state(driverId))?.tripId;
+    if (tripId) await this.onTripLocation?.(tripId, loc);
     return { accepted: true, flags };
   }
 

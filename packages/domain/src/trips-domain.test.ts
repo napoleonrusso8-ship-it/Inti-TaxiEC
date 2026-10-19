@@ -18,6 +18,9 @@ describe('geo', () => {
     expect(impossibleJump({ ...MALL_DEL_SOL, at: 0 }, { ...MALECON, at: 10_000 })).toBe(true);
     expect(impossibleJump({ ...MALL_DEL_SOL, at: 0 }, { ...MALECON, at: 600_000 })).toBe(false);
   });
+  it('tolera el ruido normal del GPS (< 100 m) aunque sea instantáneo', () => {
+    expect(impossibleJump({ ...MALL_DEL_SOL, at: 0 }, { lat: MALL_DEL_SOL.lat + 0.0002, lng: MALL_DEL_SOL.lng, at: 300 })).toBe(false);
+  });
 });
 
 describe('tarifa bajo demanda', () => {

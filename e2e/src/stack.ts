@@ -79,7 +79,7 @@ export class Stack {
         WEBAUTHN_RP_ID: 'localhost',
         WEBAUTHN_ORIGINS: 'http://localhost:39101',
       },
-      api: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key(), WEBHOOK_SECRET_KYC: key(), KYC_PROVIDER: 'mock', MATCHING_SWEEP_MS: '250', MATCHING_OFFER_TTL_SECONDS: '5', REVERIFY_PROBABILITY: '0' },
+      api: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key(), WEBHOOK_SECRET_KYC: key(), KYC_PROVIDER: 'mock', TRACKING_BASE_URL: 'http://localhost:39104', MATCHING_SWEEP_MS: '250', MATCHING_OFFER_TTL_SECONDS: '5', REVERIFY_PROBABILITY: '0' },
       sos: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key() },
       realtime: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key() },
     };

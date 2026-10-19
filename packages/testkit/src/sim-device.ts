@@ -1,5 +1,6 @@
 import { codeChallengeS256, createCodeVerifier, createDpopProof, type DpopSigner } from '@intitaxi/auth-client';
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey, type JWK } from 'jose';
+import { WebSocket } from 'ws';
 import { SoftwareAuthenticator } from './webauthn-authenticator.js';
 
 export interface HttpResult<T = any> {
@@ -74,6 +75,20 @@ export class SimDevice {
       /* texto plano */
     }
     return { status: res.status, body: parsed as T };
+  }
+
+  /** Abre el WebSocket de tiempo real autenticado con el token DPoP (cabeceras del upgrade). */
+  async openSocket(): Promise<SimSocket> {
+    const base = this.services.realtime!;
+    const proof = await createDpopProof(this.signer, { method: 'GET', url: `${base}/v1/ws`, accessToken: this.accessToken });
+    const ws = new WebSocket(`${base.replace(/^http/, 'ws')}/v1/ws`, { headers: { Authorization: `DPoP ${this.accessToken}`, DPoP: proof } });
+    return SimSocket.open(ws);
+  }
+
+  /** Credenciales para autenticarse por mensaje (como hacen los navegadores). */
+  async socketAuthMessage(type: 'auth' | 'reauth' = 'auth') {
+    const base = this.services.realtime!;
+    return { type, authorization: `DPoP ${this.accessToken}`, dpop: await createDpopProof(this.signer, { method: 'GET', url: `${base}/v1/ws`, accessToken: this.accessToken }) };
   }
 
   /** Navegador del panel de administración: sin atestación móvil, solo DPoP + passkey. */
@@ -241,5 +256,47 @@ export class SimDevice {
   /** Firma arbitraria con la clave biométrica (para módulos que la exijan). */
   signWithDeviceKey(payload: object) {
     return this.#signBio(payload);
+  }
+}
+
+/** Envoltorio de pruebas sobre un WebSocket: guarda los mensajes y permite esperar uno concreto. */
+export class SimSocket {
+  readonly messages: any[] = [];
+  closed: { code: number; reason: string } | null = null;
+  private constructor(readonly ws: WebSocket) {
+    ws.on('message', (d) => this.messages.push(JSON.parse(d.toString())));
+    ws.on('close', (code, reason) => (this.closed = { code, reason: reason.toString() }));
+  }
+
+  static open(ws: WebSocket): Promise<SimSocket> {
+    const s = new SimSocket(ws);
+    return new Promise((resolve) => {
+      ws.once('open', () => resolve(s));
+      ws.once('error', () => resolve(s));
+      ws.once('unexpected-response', () => resolve(s));
+    });
+  }
+
+  static connect(url: string): Promise<SimSocket> {
+    return SimSocket.open(new WebSocket(url));
+  }
+
+  send(msg: unknown) {
+    this.ws.send(JSON.stringify(msg));
+  }
+
+  async waitFor(pred: (m: any) => boolean, ms = 5000): Promise<any> {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      const m = this.messages.find(pred);
+      if (m) return m;
+      if (this.closed) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return undefined;
+  }
+
+  close() {
+    this.ws.close();
   }
 }

@@ -72,7 +72,7 @@ run('pnpm', ['build']);
 console.log('· Migrando la base de datos…');
 run('node', ['packages/db/dist/cli.js']);
 
-const apiEnv = { AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks', DEV_TOOLS: 'true', KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', ECU911_ADAPTER: 'mock' };
+const apiEnv = { TRACKING_BASE_URL: 'http://localhost:3004', SUBJECT_PORTAL_URL: 'http://localhost:3002', INTERNAL_AUTH_URL: 'http://localhost:3001', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks', DEV_TOOLS: 'true', KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', ECU911_ADAPTER: 'mock' };
 const SERVICES = [
   { name: 'auth', cmd: 'apps/auth/dist/main.js', env: { PORT: '3001', PUBLIC_BASE_URL: 'http://localhost:3001' } },
   { name: 'api', cmd: 'apps/api/dist/main.js', env: { PORT: '3002', PUBLIC_BASE_URL: 'http://localhost:3002', ...apiEnv } },

@@ -32,8 +32,11 @@ export const isValidLatLng = (p: LatLng) =>
  * Detección de ubicación imposible (GPS falso / saltos): velocidad implícita entre dos puntos.
  * 50 m/s = 180 km/h: ningún taxi urbano la alcanza.
  */
-export function impossibleJump(prev: LatLng & { at: number }, next: LatLng & { at: number }, maxSpeedMs = 50): boolean {
+export function impossibleJump(prev: LatLng & { at: number }, next: LatLng & { at: number }, maxSpeedMs = 50, jitterM = 100): boolean {
+  const d = haversineMeters(prev, next);
+  // El GPS de un teléfono oscila decenas de metros: por debajo de esa tolerancia no se juzga la velocidad.
+  if (d <= jitterM) return false;
   const dt = (next.at - prev.at) / 1000;
-  if (dt <= 0) return haversineMeters(prev, next) > 30;
-  return haversineMeters(prev, next) / dt > maxSpeedMs;
+  if (dt <= 0) return true;
+  return d / dt > maxSpeedMs;
 }
