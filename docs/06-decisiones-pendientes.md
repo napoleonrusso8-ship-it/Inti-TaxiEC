@@ -1,12 +1,34 @@
-# 06 — Decisiones pendientes y revisiones requeridas
+# 06 — Decisiones y revisiones requeridas
 
-> Estas decisiones bloquean o condicionan módulos concretos. Para cada una indico mi **recomendación** y el compromiso entre seguridad, costo y UX. Necesito tu respuesta antes de empezar el módulo indicado.
+## 0. Decisiones aprobadas (2026-10-19)
+
+| # | Decisión aprobada |
+|---|---|
+| D1 | Nombre: **Inti Taxi** (paquetes `@intitaxi/*`, bundle IDs `ec.intitaxi.passenger` / `ec.intitaxi.driver`) |
+| D2–D12, D17 | Se adoptan las recomendaciones de este documento ("a tu mejor criterio") |
+| D13 | Retención del manifiesto: **180 días** |
+| D14 | Taxi Ruta: la tarifa se fija en el **momento en que se confirma el abordaje** (el conductor valida el PIN). Ejemplo: si se sube a las 21:00, paga $4.00. Para no sorprender al pasajero, la app muestra la tarifa como *estimada* y avisa cuando la reserva está a menos de 30 min de un cambio de franja |
+| D11 | Billetera **sin recargas** en la fase 1 |
+| D15 | **PIN de coacción**: sí |
+| D16 | Audio: solo el dispositivo del activador, con consentimiento previo |
+| Ruta 1 | El orden de paradas de la especificación **es el recorrido real** del taxi ruta (confirmado por el propietario). Mall del Río existe en Guayaquil. La validación con la API de mapas se usará solo para obtener coordenadas y la polilínea y para advertir de errores al crear **nuevas** rutas, no para reordenar la Ruta 1 |
+| ECU 911 | La colaboración con ECU 911 se limita a **emergencias reales** (p. ej. accidentes): el valor que aportamos es el registro de quién viajaba en el vehículo. No hay intercambio rutinario de datos. Ver §0.1 |
+
+### 0.1 Alcance de la integración ECU 911 (interpretación aprobada)
+- Se envían datos a ECU 911 **solo** cuando existe un incidente de emergencia: un SOS confirmado o un **reporte de accidente** (el conductor o el centro de monitoreo lo pueden registrar aunque nadie pulse el SOS, p. ej. si los ocupantes no pueden).
+- Lo que se entrega es el manifiesto (quién iba en el vehículo, conductor, placa) y la ubicación, para facilitar la atención y la identificación de los afectados.
+- La llamada al 911 desde el teléfono **siempre** se inicia al pulsar el SOS, haya o no convenio.
+- Fuera de una emergencia, solo se entregan datos ante un requerimiento legal válido.
+
+---
+
+> Las secciones siguientes son el análisis original con el que se tomaron estas decisiones.
 
 ## 1. Decisiones de stack y producto
 
 | # | Decisión | Recomendación | Compromiso | Bloquea |
 |---|---|---|---|---|
-| D1 | Nombre de la app (`[NOMBRE_APP]`) y del repositorio | — | — | Módulo 1 (bundle IDs, dominio OIDC) |
+| D1 | Nombre de la app (`Inti Taxi`) y del repositorio | — | — | Módulo 1 (bundle IDs, dominio OIDC) |
 | D2 | Móvil: React Native vs Flutter | **React Native** | RN: un solo lenguaje y validadores compartidos. Flutter: mejor ofuscación y rendimiento, pero un segundo lenguaje | Módulo 1 |
 | D3 | Una app o dos (pasajero / conductor) | **Dos apps** | Más trabajo de publicación, pero menos superficie de ataque y permisos más limpios (el pasajero no necesita ubicación en segundo plano) | Módulo 1 |
 | D4 | Backend: NestJS vs Go | **NestJS** (extraer `realtime` a Go más adelante si hace falta) | Go: menor costo de cómputo; NestJS: más velocidad de desarrollo | Módulo 1 |

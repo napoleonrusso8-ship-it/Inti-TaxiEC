@@ -1,4 +1,4 @@
-# Especificación del proyecto: [NOMBRE_APP]
+# Especificación del proyecto: Inti Taxi
 
 > **Documento de referencia.** Se consulta antes de cada módulo. Cualquier desviación requiere aprobación explícita del propietario del producto.
 > Versión 1.0 — 2026-10-19

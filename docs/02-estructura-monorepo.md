@@ -1,10 +1,10 @@
 # 02 — Estructura del monorepo
 
-> Estado: **PROPUESTA — pendiente de aprobación.**
+> Estado: **APROBADO (2026-10-19)**.
 > Herramientas: `pnpm` workspaces + Turborepo. TypeScript estricto en todo el repositorio.
 
 ```
-[nombre-app]/
+inti-taxi/
 ├── apps/
 │   ├── api/                      # Core API — monolito modular NestJS
 │   │   ├── src/

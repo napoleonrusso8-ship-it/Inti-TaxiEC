@@ -1,6 +1,6 @@
 # 03 — Modelo de datos
 
-> Estado: **PROPUESTA — pendiente de aprobación.**
+> Estado: **APROBADO (2026-10-19)**.
 > PostgreSQL 16 + PostGIS. Un esquema por módulo (`identity`, `kyc`, `drivers`, `trips`, `companions`, `manifest`, `payments`, `fixed_routes`, `audit`, `privacy`). Todos los IDs son `uuid` v7 (ordenables, no enumerables). Las marcas de tiempo son `timestamptz` en UTC; la conversión a `America/Guayaquil` ocurre solo en la lógica de negocio (tarifas) y en la presentación.
 
 **Convenciones de datos personales**
@@ -80,7 +80,7 @@ erDiagram
 | `devices` | `id`, `user_id`, `platform`, `attestation_status`, `attested_at`, `fingerprint_hmac`, `push_token_enc`, `last_ip_hmac`, `risk_score`, `revoked_at` |
 | `credentials` | `id`, `user_id`, `type` (`passkey`/`device_biometric_key`), `credential_id`, `public_key`, `sign_count`, `aaguid`, `device_id`, `created_at`, `revoked_at` — **solo claves públicas** |
 | `refresh_token_families` | `id`, `user_id`, `device_id`, `current_token_hash`, `rotated_at`, `revoked_at`, `revoke_reason` |
-| `otp_challenges` | `id`, `phone_hmac`, `code_hash` (argon2id), `attempts`, `expires_at` (5 min), `consumed_at` |
+| `otp_challenges` | `id`, `phone_hmac`, `code_mac` (HMAC-SHA256 con *pepper* en KMS: un código de 6 dígitos con hash lento seguiría siendo trivial de romper fuera de línea, así que la protección real la da la clave secreta), `attempts`, `expires_at` (5 min), `consumed_at` |
 | `trusted_contacts` | `id`, `user_id`, `name_enc` 🔒, `phone_enc` 🔒, `consented_at` |
 | `admin_role_assignments` | `user_id`, `role` (`super_admin`, `driver_reviewer`, `support`, `fraud_analyst`, `sos_operator`, `route_manager`, `auditor`, `dpo`), `granted_by`, `expires_at` (asignaciones temporales) |
 
@@ -120,7 +120,7 @@ erDiagram
 | Tabla | Campos clave |
 |---|---|
 | `trip_manifests` | `id`, `trip_id` (único), `version` (1 al iniciar, nuevas versiones al cerrar o ante incidente — nunca se actualizan), `payload_enc` (JSON cifrado: solicitante, pasajeros, acompañantes, conductor + `kyc_verification_id` más reciente, vehículo/placa, horarios, referencia a la ruta GPS), `payload_sha256`, `prev_hash`, `chain_hash`, `signed_at`, `signature` (ECDSA con clave KMS) |
-| `incidents` | `id`, `trip_id`, `opened_by`, `opened_at`, `status`, `severity`, `assigned_operator`, `legal_hold_until`, `closed_at` |
+| `incidents` | `id`, `trip_id`, `type` (`sos`/`accident`/`other`), `opened_by`, `opened_at`, `status`, `severity`, `assigned_operator`, `legal_hold_until`, `closed_at` |
 | `sos_events` | `id`, `incident_id`, `actor_person_id`, `actor_role`, `ts`, `point`, `ecu911_status` (`not_sent`/`sent`/`acked`/`failed`/`simulated`), `ecu911_ref`, `audio_recording_ref` |
 | `authority_disclosures` | `id`, `incident_id` o `legal_request_ref`, `authority`, `legal_basis`, `share_link_id`, `disclosed_by`, `approved_by` (doble aprobación), `disclosed_at` |
 
@@ -150,7 +150,7 @@ Las tablas `trip_manifests`, `sos_events`, `consents` y `audit_log` tienen un tr
 
 **Regla de tarifas (en `packages/domain`)**
 ```
-hora_local = convertir(trip.started_at, "America/Guayaquil")
+hora_local = convertir(seat_booking.boarded_at, "America/Guayaquil")   -- momento en que el conductor confirma el abordaje (PIN)
 regla = fare_rules activas de la ruta, vigentes en esa fecha,
         donde hora_local ∈ [start_local, end_local]  (con manejo de cruce de medianoche)
         ORDER BY priority DESC LIMIT 1
@@ -158,7 +158,7 @@ total = regla.amount_cents × número_de_personas
 ```
 - Semilla de Ruta 1: Diurna `06:30:00–20:59:59` → 300; Nocturna `21:00:00–06:29:59` → 400.
 - El panel validará que las franjas cubran las 24 h sin huecos ni solapamientos con la misma prioridad.
-- 🟡 **Hora de inicio**: se propone tomar el *momento de la reserva confirmada* en Taxi Ruta (para que el precio mostrado sea el cobrado) y el *inicio real* en on demand. La especificación dice "hora de inicio del viaje", así que necesito confirmación (ver decisiones pendientes).
+- ✅ **Hora de referencia (D14 aprobada)**: en Taxi Ruta, el momento en que se confirma el abordaje (`seat_bookings.boarded_at`); la cotización previa es solo estimada. `seat_bookings` guarda `boarded_at`, `fare_rule_id` y `unit_fare_cents` congelados en ese instante.
 
 ### 2.8 `audit`
 | Tabla | Campos clave |

@@ -1,6 +1,6 @@
 # 01 — Arquitectura
 
-> Estado: **PROPUESTA — pendiente de aprobación.** Las decisiones marcadas con 🟡 tienen compromisos y están listadas en [`06-decisiones-pendientes.md`](06-decisiones-pendientes.md).
+> Estado: **APROBADO (2026-10-19)**. Las decisiones marcadas con 🟡 tienen compromisos y están listadas en [`06-decisiones-pendientes.md`](06-decisiones-pendientes.md).
 
 ## 1. Principios
 
@@ -19,7 +19,7 @@ flowchart LR
   D([Conductor<br/>app móvil])
   A([Administrador<br/>panel web])
   T([Tercero / acompañante<br/>sin app — enlace web])
-  SYS[[NOMBRE_APP<br/>Plataforma]]
+  SYS[[Inti Taxi<br/>Plataforma]]
 
   P --> SYS
   D --> SYS

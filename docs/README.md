@@ -1,4 +1,4 @@
-# Documentación — [NOMBRE_APP]
+# Documentación — Inti Taxi
 
 | Documento | Contenido |
 |---|---|
@@ -10,4 +10,4 @@
 | [05-endpoints.md](05-endpoints.md) | Lista de endpoints REST/WebSocket con autorización |
 | [06-decisiones-pendientes.md](06-decisiones-pendientes.md) | Decisiones que requieren aprobación y partes que requieren revisión legal |
 
-Estado: **Fase de diseño — pendiente de aprobación.** No se escribirá código hasta la aprobación.
+Estado: **Diseño aprobado el 2026-10-19** (ver decisiones en `06-decisiones-pendientes.md` §0). Desarrollo por módulos en curso.

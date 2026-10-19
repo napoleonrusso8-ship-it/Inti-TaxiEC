@@ -1,6 +1,6 @@
 # 04 — Modelo de amenazas (STRIDE)
 
-> Estado: **PROPUESTA — pendiente de aprobación.** Se revisará al cerrar cada módulo y antes del pentest externo.
+> Estado: **APROBADO (2026-10-19)**. Se revisará al cerrar cada módulo y antes del pentest externo.
 
 ## 1. Activos
 

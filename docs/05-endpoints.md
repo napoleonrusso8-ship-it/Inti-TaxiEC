@@ -1,6 +1,6 @@
 # 05 — Lista de endpoints
 
-> Estado: **PROPUESTA — pendiente de aprobación.** Se publicará como OpenAPI 3.1 en el módulo 1.
+> Estado: **APROBADO (2026-10-19)**. Se publicará como OpenAPI 3.1 en el módulo 1.
 
 **Convenciones**
 - Prefijo `/v1`. JSON. IDs UUIDv7. Errores en RFC 9457 (`application/problem+json`) sin filtrar detalles internos.
