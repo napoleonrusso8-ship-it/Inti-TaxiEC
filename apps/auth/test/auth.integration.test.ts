@@ -2,7 +2,7 @@ import { codeChallengeS256, createCodeVerifier } from '@intitaxi/auth-client';
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from 'jose';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { BASE, CLIENT_ID, flushRedis, ORIGIN, startHarness, TestDevice, type Harness } from './harness.js';
-import { SoftwareAuthenticator } from './webauthn-authenticator.js';
+import { SoftwareAuthenticator } from '@intitaxi/testkit';
 
 let h: Harness;
 let phoneSeq = 0;

@@ -1,0 +1,22 @@
+{
+  "name": "@intitaxi/simulator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Simulador local de Inti Taxi: dispositivos de pasajero/conductor/tercero/admin contra los servicios reales. Solo desarrollo.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@intitaxi/testkit": "workspace:*",
+    "express": "5.2.1",
+    "ioredis": "5.11.1",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/pg": "8.23.1"
+  }
+}

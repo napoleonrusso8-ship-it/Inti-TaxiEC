@@ -2,14 +2,17 @@
   "name": "inti-taxi",
   "private": true,
   "packageManager": "pnpm@10.28.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:unit": "turbo run test:unit",
     "test:integration": "turbo run test:integration --concurrency=1",
-    "db:migrate": "pnpm --filter @intitaxi/db migrate"
+    "db:migrate": "pnpm --filter @intitaxi/db migrate",
+    "dev": "node scripts/dev.mjs"
   },
   "devDependencies": {
     "turbo": "2.11.9",

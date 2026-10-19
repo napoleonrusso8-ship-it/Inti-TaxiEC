@@ -72,6 +72,9 @@ importers:
       '@intitaxi/auth-client':
         specifier: workspace:*
         version: link:../../packages/auth-client
+      '@intitaxi/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
       '@nestjs/testing':
         specifier: 11.2.7
         version: 11.2.7(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.7)(@nestjs/platform-express@11.2.7)
@@ -90,6 +93,28 @@ importers:
       unplugin-swc:
         specifier: 1.5.9
         version: 1.5.9(@swc/core@1.16.18)(rollup@4.64.10)
+
+  apps/simulator:
+    dependencies:
+      '@intitaxi/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
+      express:
+        specifier: 5.2.1
+        version: 5.2.1
+      ioredis:
+        specifier: 5.11.1
+        version: 5.11.1
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@types/express':
+        specifier: 5.0.6
+        version: 5.0.6
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
 
   packages/auth-client:
     devDependencies:
@@ -166,6 +191,15 @@ importers:
       '@types/express':
         specifier: 5.0.6
         version: 5.0.6
+
+  packages/testkit:
+    dependencies:
+      '@intitaxi/auth-client':
+        specifier: workspace:*
+        version: link:../auth-client
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
 
 packages:
 

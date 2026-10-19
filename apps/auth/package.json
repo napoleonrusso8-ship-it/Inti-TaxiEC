@@ -35,6 +35,7 @@
     "@types/express": "5.0.6",
     "@types/supertest": "7.2.1",
     "supertest": "7.3.1",
-    "unplugin-swc": "1.5.9"
+    "unplugin-swc": "1.5.9",
+    "@intitaxi/testkit": "workspace:*"
   }
 }

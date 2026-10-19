@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulador Inti Taxi</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="sun" aria-hidden="true"></span><strong>Inti Taxi</strong> <span class="muted">· simulador de desarrollo</span></div>
+    <div id="health" class="health" aria-live="polite"></div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="devices" class="active">Dispositivos</button>
+    <button role="tab" data-tab="inbox">Bandeja SMS / correo <span id="inbox-count" class="badge"></span></button>
+    <button role="tab" data-tab="timeline">Línea de tiempo</button>
+    <button role="tab" data-tab="audit">Auditoría</button>
+    <button role="tab" data-tab="guide">Guía</button>
+  </nav>
+
+  <main>
+    <section id="tab-devices" class="tab active">
+      <div class="layout">
+        <aside class="card">
+          <h2>Nuevo dispositivo</h2>
+          <form id="new-device" class="stack">
+            <label>Nombre <input name="label" placeholder="p. ej. Ana (pasajera)" /></label>
+            <label>App
+              <select name="role"><option value="passenger">Pasajero</option><option value="driver">Conductor</option></select>
+            </label>
+            <label>Integridad del teléfono
+              <select name="integrity">
+                <option value="ok">Íntegro (Play Integrity OK)</option>
+                <option value="basic">Rooteado / no certificado</option>
+                <option value="fail">App modificada / emulador</option>
+              </select>
+            </label>
+            <button class="primary" type="submit">Instalar y atestar</button>
+          </form>
+          <h2>Dispositivos</h2>
+          <ul id="device-list" class="device-list"></ul>
+        </aside>
+        <div id="device-panel" class="card panel">
+          <p class="muted">Crea o selecciona un dispositivo para empezar.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-inbox" class="tab">
+      <div class="card">
+        <div class="row between"><h2>Mensajes enviados (devbox)</h2><button id="clear-inbox">Vaciar</button></div>
+        <p class="muted">SMS y correos que los servicios "enviaron". En producción salen por Infobip y Amazon SES.</p>
+        <ul id="inbox" class="inbox"></ul>
+      </div>
+    </section>
+
+    <section id="tab-timeline" class="tab">
+      <div class="card"><h2>Peticiones y respuestas</h2><ul id="timeline" class="timeline"></ul></div>
+    </section>
+
+    <section id="tab-audit" class="tab">
+      <div class="card"><div class="row between"><h2>Log de auditoría</h2><span id="chain"></span></div><ul id="audit" class="timeline"></ul></div>
+    </section>
+
+    <section id="tab-guide" class="tab">
+      <div class="card prose" id="guide"></div>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
