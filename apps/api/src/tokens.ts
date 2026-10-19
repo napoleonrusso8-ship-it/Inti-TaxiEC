@@ -6,3 +6,4 @@ export const IDENTITY_CIPHER = Symbol('IDENTITY_CIPHER');
 export const STORAGE = Symbol('STORAGE');
 export const MAPS = Symbol('MAPS');
 export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');
+export const ECU911 = Symbol('ECU911');

@@ -15,5 +15,7 @@ export async function createApp(config: AppConfig, role: ServiceRole = 'api'): P
   });
   if (config.DEV_TOOLS && role === 'api') app.use(devStorageUpload(app.get(STORAGE, { strict: false })));
   configureHttpApp(app, { trustProxyHops: config.TRUST_PROXY_HOPS, rawBodyPaths: ['/v1/webhooks/'] });
+  // Audio del SOS: cuerpo binario de hasta 256 KB (solo en el servicio sos).
+  if (role === 'sos') (app as unknown as { useBodyParser(t: string, o: object): void }).useBodyParser('raw', { type: ['audio/aac', 'audio/mp4', 'audio/webm', 'audio/ogg'], limit: '256kb' });
   return app;
 }

@@ -1,4 +1,4 @@
-import { DeleteObjectCommand, GetObjectCommand, GetObjectTaggingCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, GetObjectTaggingCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { constantTimeEqual } from '@intitaxi/crypto';
@@ -21,6 +21,8 @@ export interface UploadInstructions {
  */
 export interface StoragePort {
   createUpload(key: string, contentType: string, maxBytes: number): Promise<UploadInstructions>;
+  /** Escritura directa desde el servidor (p. ej. audio cifrado de un SOS). */
+  put(key: string, data: Buffer): Promise<void>;
   head(key: string): Promise<{ size: number } | null>;
   read(key: string, maxBytes: number): Promise<Buffer>;
   createDownloadUrl(key: string, ttlSeconds: number): Promise<string>;
@@ -47,6 +49,10 @@ export class S3Storage implements StoragePort {
       Expires: 300,
     });
     return { method: 'POST', url: p.url, fields: p.fields, expiresIn: 300 };
+  }
+
+  async put(key: string, data: Buffer) {
+    await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: data, ...(this.kmsKeyId ? { ServerSideEncryption: 'aws:kms', SSEKMSKeyId: this.kmsKeyId } : {}) }));
   }
 
   async head(key: string) {
@@ -108,6 +114,10 @@ export class LocalStorage implements StoragePort {
     const extra = `${contentType}\n${maxBytes}`;
     const q = new URLSearchParams({ key, exp: String(exp), ct: contentType, max: String(maxBytes), sig: this.sign('put', key, exp, extra) });
     return { method: 'PUT', url: `${this.baseUrl}/v1/dev/storage?${q}`, headers: { 'Content-Type': contentType }, expiresIn: 300 };
+  }
+
+  async put(key: string, data: Buffer) {
+    await this.write(key, data);
   }
 
   async write(key: string, data: Buffer) {

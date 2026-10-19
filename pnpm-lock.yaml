@@ -213,6 +213,9 @@ importers:
       '@intitaxi/auth':
         specifier: workspace:*
         version: link:../apps/auth
+      '@intitaxi/auth-client':
+        specifier: workspace:*
+        version: link:../packages/auth-client
       '@intitaxi/db':
         specifier: workspace:*
         version: link:../packages/db

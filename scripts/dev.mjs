@@ -49,6 +49,18 @@ if (!existsSync(envFile)) {
   console.log('· .env.dev creado con secretos aleatorios (solo local)');
 }
 
+// Claves añadidas en módulos posteriores: se agregan a un .env.dev existente si faltan.
+{
+  const current = readFileSync(envFile, 'utf8');
+  const extra = [];
+  if (!current.includes('MANIFEST_SIGNING_KEY_PEM=')) {
+    const pem = generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey.export({ format: 'pem', type: 'pkcs8' }).toString().replace(/\n/g, '\\n');
+    extra.push(`MANIFEST_SIGNING_KEY_PEM=${pem}`);
+  }
+  if (!current.includes('SAFETY_PIN_PEPPER=')) extra.push(`SAFETY_PIN_PEPPER=${rnd()}`);
+  if (extra.length) writeFileSync(envFile, current + extra.join('\n') + '\n', { mode: 0o600 });
+}
+
 const fileEnv = Object.fromEntries(
   readFileSync(envFile, 'utf8')
     .split('\n')
@@ -72,7 +84,7 @@ run('pnpm', ['build']);
 console.log('· Migrando la base de datos…');
 run('node', ['packages/db/dist/cli.js']);
 
-const apiEnv = { TRACKING_BASE_URL: 'http://localhost:3004', SUBJECT_PORTAL_URL: 'http://localhost:3002', INTERNAL_AUTH_URL: 'http://localhost:3001', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks', DEV_TOOLS: 'true', KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', ECU911_ADAPTER: 'mock' };
+const apiEnv = { TRACKING_BASE_URL: 'http://localhost:3004', SUBJECT_PORTAL_URL: 'http://localhost:3002', INTERNAL_AUTH_URL: 'http://localhost:3001', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks', DEV_TOOLS: 'true', KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', ECU911_ADAPTER: 'mock', ECU911_AUTO_ESCALATE_SECONDS: '60' };
 const SERVICES = [
   { name: 'auth', cmd: 'apps/auth/dist/main.js', env: { PORT: '3001', PUBLIC_BASE_URL: 'http://localhost:3001' } },
   { name: 'api', cmd: 'apps/api/dist/main.js', env: { PORT: '3002', PUBLIC_BASE_URL: 'http://localhost:3002', ...apiEnv } },

@@ -22,6 +22,13 @@ import { NotificationsModule } from './modules/notifications/notifications.servi
 import { PeopleModule } from './modules/people/people.module.js';
 import { DevJobsController } from './modules/dev/dev-jobs.controller.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
+import { ManifestModule, SosModule } from './modules/safety/safety.module.js';
+import { AdminGuard } from './modules/admin/admin.guard.js';
+import { LocalStorage, S3Storage } from './infra/storage.js';
+import { S3Client } from '@aws-sdk/client-s3';
+import { randomBytes } from 'node:crypto';
+import { STORAGE } from './tokens.js';
+import { TripEvents } from './modules/trips/trip-events.js';
 import { CONFIG } from './tokens.js';
 
 export type ServiceRole = 'api' | 'sos';
@@ -52,13 +59,24 @@ export class AppModule {
         DpopProofGuard,
         AttestationGuard,
         RecentMfaGuard,
+        AdminGuard,
+        {
+          provide: STORAGE,
+          useFactory: () =>
+            config.STORAGE_DRIVER === 's3'
+              ? new S3Storage(new S3Client({ region: config.AWS_REGION }), config.S3_BUCKET!, config.S3_KMS_KEY_ID)
+              : new LocalStorage(config.LOCAL_STORAGE_DIR, config.PUBLIC_BASE_URL, devStorageSecret),
+        },
+        // En el servicio sos no hay módulo de viajes: el ciclo de vida del manifiesto solo corre en api.
+        { provide: 'TRIP_EVENTS_OPTIONAL', useFactory: (e?: TripEvents) => e ?? null, inject: [{ token: TripEvents, optional: true }] },
       ],
-      exports: [CONFIG, AccessTokenVerifier, AuditService, AccessTokenGuard, DpopProofGuard, AttestationGuard, RecentMfaGuard],
+      exports: [CONFIG, AccessTokenVerifier, AuditService, AccessTokenGuard, DpopProofGuard, AttestationGuard, RecentMfaGuard, AdminGuard, STORAGE, 'TRIP_EVENTS_OPTIONAL'],
     })
     class CoreModule {}
 
     // El servicio SOS se despliega aparte (aislamiento de fallos y credenciales) y solo carga sus módulos.
-    const domain = role === 'api' ? [KycModule.forConfig(config), DriversModule.forConfig(config), TripsModule.forConfig(config), NotificationsModule, PeopleModule, PaymentsModule.forConfig(config)] : [];
+    const devStorageSecret = randomBytes(32);
+    const domain = role === 'api' ? [ManifestModule.forRole('api'), KycModule.forConfig(config), DriversModule.forConfig(config), TripsModule.forConfig(config), NotificationsModule, PeopleModule, PaymentsModule.forConfig(config)] : [ManifestModule.forRole('sos'), SosModule.forConfig(config)];
     return {
       module: AppModule,
       imports: [

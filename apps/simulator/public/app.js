@@ -91,10 +91,10 @@ function renderFromDevices() {
 }
 
 function lastCodeFor(device, kind) {
-  const re = kind === 'email-link' ? /#token=([A-Za-z0-9_-]+)/ : kind === 'subject-link' ? /\/p\/([A-Za-z0-9_-]{43})/ : /(\d{6})/;
+  const re = kind === 'email-link' ? /#token=([A-Za-z0-9_-]+)/ : kind === 'subject-link' ? /\/p\/([A-Za-z0-9_-]{43})/ : kind === 'track-link' ? /\/t\/([A-Za-z0-9_-]{43})/ : /(\d{6})/;
   for (const m of state.inbox) {
     if (kind === 'otp' && m.channel !== 'sms') continue;
-    if (kind !== 'otp' && m.channel !== 'email') continue;
+    if (kind !== 'otp' && kind !== 'track-link' && m.channel !== 'email') continue;
     const match = re.exec(m.text);
     if (match) return match[1];
   }

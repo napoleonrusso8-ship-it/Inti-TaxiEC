@@ -118,6 +118,8 @@ export async function waitFor<T>(fn: () => Promise<T>, ok: (v: T) => boolean, ms
 
 /** Viaje completo hasta "en curso" (solicitado → aceptado → llegó → PIN). */
 export async function startedTrip(s: Stack, opts: { passenger?: { d: SimDevice; userId: string }; extra?: Record<string, unknown> } = {}) {
+  // Aísla la prueba: los conductores de pruebas anteriores dejan de estar disponibles para emparejar.
+  await s.redis.del('drivers:available');
   const drv = await onlineDriver(s);
   const p = opts.passenger ?? (await s.loggedIn());
   const t = await requestTrip(p.d, opts.extra ?? {});
@@ -140,6 +142,7 @@ export async function offerFor(d: SimDevice, tripId: string, ms = 8000): Promise
 
 /** Viaje completado de punta a punta con el medio de pago indicado. */
 export async function completedTrip(s: Stack, opts: { at: { lat: number; lng: number }; passenger?: { d: SimDevice; userId: string }; payment?: Record<string, unknown>; driver?: Awaited<ReturnType<typeof onlineDriver>>; reviewer?: SimDevice }) {
+  if (!opts.driver) await s.redis.del('drivers:available');
   const drv = opts.driver ?? (await onlineDriver(s, opts.at, 4, opts.reviewer));
   const p = opts.passenger ?? (await s.loggedIn());
   const t = await requestTrip(p.d, opts.payment ?? {}, opts.at, MALECON);

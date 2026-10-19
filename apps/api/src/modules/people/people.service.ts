@@ -5,7 +5,8 @@ import { AppError, AuditService, parseInput, RateLimiter, tooManyRequests, type 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { AppConfig } from '../../config.js';
-import { BLIND_INDEX, CONFIG, FIELD_CIPHER, PG_POOL } from '../../tokens.js';
+import { BLIND_INDEX, CONFIG, FIELD_CIPHER, PG_POOL, STORAGE } from '../../tokens.js';
+import type { StoragePort } from '../../infra/storage.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { TripEvents, type TripStatusEvent } from '../trips/trip-events.js';
 import { tripAad, TripsService, type TripRow } from '../trips/trips.service.js';
@@ -62,6 +63,7 @@ export class PeopleService implements OnModuleInit, OnModuleDestroy {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(RealtimeBridge) private readonly bridge: RealtimeBridge,
     @Inject(TripTrackingService) private readonly tracking: TripTrackingService,
+    @Inject(STORAGE) private readonly storage: StoragePort,
   ) {}
 
   onModuleInit() {
@@ -436,7 +438,22 @@ export class PeopleService implements OnModuleInit, OnModuleDestroy {
     const n = await this.#anonymize(this.pool, rows.map((r) => r.person_id));
     await this.pool.query(`UPDATE people.data_subject_requests SET status = 'completed', resolved_at = now() WHERE status = 'deferred_legal_hold' AND person_id = ANY($1)`, [rows.map((r) => r.person_id)]);
     await this.pool.query(`UPDATE trips.trips SET origin_label_enc = NULL, dest_label_enc = NULL WHERE retention_until < now() AND NOT incident_hold AND (origin_label_enc IS NOT NULL OR dest_label_enc IS NOT NULL)`);
-    if (n) await this.audit.record({ action: 'retention.anonymize', resourceType: 'person', actorRole: 'system', metadata: { count: n } });
+    // Manifiestos vencidos (sin incidente): borrado solo posible dentro de esta transacción de retención.
+    await withTransaction(this.pool, async (c) => {
+      await c.query(`SET LOCAL intitaxi.retention_purge = 'on'`);
+      await c.query(`DELETE FROM safety.trip_manifests m USING trips.trips t WHERE t.id = m.trip_id AND t.retention_until < now() AND NOT t.incident_hold`);
+    });
+    // Audio de SOS cancelados o cerrados sin retención legal: 90 días.
+    const audio = await this.pool.query<{ id: string; storage_key: string }>(
+      `SELECT a.id, a.storage_key FROM safety.audio_chunks a JOIN safety.incidents i ON i.id = a.incident_id
+       WHERE a.created_at < now() - make_interval(days => $1) AND i.status IN ('cancelled_by_user', 'closed') AND (i.legal_hold_until IS NULL OR i.legal_hold_until < now())`,
+      [this.config.AUDIO_RETENTION_DAYS],
+    );
+    for (const a of audio.rows) {
+      await this.storage.delete(a.storage_key);
+      await this.pool.query('DELETE FROM safety.audio_chunks WHERE id = $1', [a.id]);
+    }
+    if (n || audio.rowCount) await this.audit.record({ action: 'retention.anonymize', resourceType: 'person', actorRole: 'system', metadata: { count: n, audioDeleted: audio.rowCount } });
     return n;
   }
 }

@@ -68,6 +68,20 @@ const schema = z
     PAYOUT_MIN_CENTS: z.coerce.number().int().min(100).default(500),
     /** Espera tras registrar/cambiar la cuenta bancaria antes de poder retirar (anti robo de cuenta). */
     PAYOUT_ACCOUNT_COOLDOWN_HOURS: z.coerce.number().int().min(0).max(240).default(72),
+    /** ECU 911: "mock" (desarrollo/pruebas, nunca contacta al 911 real), "signed_link" (sin convenio), "agreement" (con convenio, mTLS). */
+    ECU911_ADAPTER: z.enum(['mock', 'signed_link', 'agreement']).default('mock'),
+    ECU911_ENDPOINT: z.string().url().optional(),
+    ECU911_CLIENT_CERT_FILE: z.string().optional(),
+    ECU911_CLIENT_KEY_FILE: z.string().optional(),
+    ECU911_CA_FILE: z.string().optional(),
+    /** Si ningún operador atiende el incidente en N segundos, se escala automáticamente (fail-safe). */
+    ECU911_AUTO_ESCALATE_SECONDS: z.coerce.number().int().min(5).max(600).default(60),
+    /** Clave ES256 para firmar manifiestos (en producción: clave asimétrica de KMS). */
+    MANIFEST_SIGNING_KEY_PEM: z.string().min(1),
+    MANIFEST_SIGNING_KID: z.string().default('manifest-1'),
+    SAFETY_PIN_PEPPER: base64Key(32),
+    AUDIO_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(90),
+    AUTHORITY_LINK_HOURS: z.coerce.number().int().min(1).max(168).default(24),
     MATCHING_SWEEP_MS: z.coerce.number().int().min(200).max(10000).default(1000),
   })
   .superRefine((c, ctx) => {
@@ -78,6 +92,7 @@ const schema = z
     if (c.KYC_PROVIDER === 'mock' && !c.WEBHOOK_SECRET_KYC) add('WEBHOOK_SECRET_KYC', 'requerida con KYC_PROVIDER=mock');
     if (c.PAYMENT_GATEWAY === 'kushki' && (!c.KUSHKI_PRIVATE_MERCHANT_ID || !c.KUSHKI_WEBHOOK_SECRET)) add('KUSHKI_PRIVATE_MERCHANT_ID', 'requerida con PAYMENT_GATEWAY=kushki');
     if (c.PAYMENT_GATEWAY === 'mock' && !c.WEBHOOK_SECRET_PAYMENTS) add('WEBHOOK_SECRET_PAYMENTS', 'requerida con PAYMENT_GATEWAY=mock');
+    if (c.ECU911_ADAPTER === 'agreement' && (!c.ECU911_ENDPOINT || !c.ECU911_CLIENT_CERT_FILE || !c.ECU911_CLIENT_KEY_FILE)) add('ECU911_ENDPOINT', 'requerida (con certificados mTLS) con ECU911_ADAPTER=agreement');
     if (c.MAPS_PROVIDER === 'google' && !c.GOOGLE_MAPS_API_KEY) add('GOOGLE_MAPS_API_KEY', 'requerida con MAPS_PROVIDER=google');
     if (c.STORAGE_DRIVER === 's3' && !c.S3_BUCKET) add('S3_BUCKET', 'requerida con STORAGE_DRIVER=s3');
     if (c.NODE_ENV !== 'production') return;
@@ -85,6 +100,7 @@ const schema = z
     prod(!c.DEV_TOOLS, 'DEV_TOOLS', 'no se permiten herramientas de desarrollo');
     prod(c.KYC_PROVIDER === 'veriff', 'KYC_PROVIDER', 'no se permite el proveedor simulado');
     prod(!c.AUTH_JWKS_JSON, 'AUTH_JWKS_JSON', 'usa AUTH_JWKS_URL');
+    prod(c.ECU911_ADAPTER !== 'mock', 'ECU911_ADAPTER', 'el adaptador simulado no se permite en producción');
     prod(c.PAYMENT_GATEWAY === 'kushki', 'PAYMENT_GATEWAY', 'no se permite la pasarela simulada');
     prod(c.MAPS_PROVIDER === 'google', 'MAPS_PROVIDER', 'debe ser google');
     prod(c.STORAGE_DRIVER === 's3' && !!c.S3_KMS_KEY_ID, 'STORAGE_DRIVER', 'debe ser s3 con SSE-KMS');

@@ -279,6 +279,34 @@ export const actions: Record<string, Handler> = {
   'admin.payouts': (e, p) => e.device.call('api', 'GET', `/v1/admin/payouts?status=${p.status}`),
   'admin.payout.decide': (e, p) => e.device.call('api', 'POST', `/v1/admin/payouts/${p.payoutId}/decision`, { decision: p.decision, reason: p.reason }),
 
+  // ----- Módulo 8: seguridad del viaje -----
+  'trusted.add': (e, p) => e.device.call('auth', 'POST', '/v1/me/trusted-contacts', { name: p.name, phone: p.phone }),
+  'trusted.list': (e) => e.device.call('auth', 'GET', '/v1/me/trusted-contacts'),
+  'pins.set': (e, p) => e.device.call('sos', 'PUT', '/v1/me/safety-pins', { pin: p.pin, duressPin: p.duressPin, currentPin: p.currentPin || undefined }),
+  'sos.activate': async (e) => {
+    const loc = e.data.location ?? PLACES['Mall del Sol'];
+    const r = await e.device.call('sos', 'POST', '/v1/sos', { tripId: e.data.tripId, location: loc });
+    if (r.status === 201) e.data.incidentId = r.body.incidentId;
+    return r;
+  },
+  'sos.status': (e) => e.device.call('sos', 'GET', `/v1/sos/${e.data.incidentId}`),
+  'sos.cancel': (e, p) => e.device.call('sos', 'POST', `/v1/sos/${e.data.incidentId}/cancel`, { pin: p.pin }),
+  'sos.accident': async (e) => {
+    const r = await e.device.call('sos', 'POST', `/v1/driver/trips/${e.data.tripId}/accident`, { location: e.data.location ?? PLACES['Mall del Sol'] });
+    if (r.status === 201) e.data.incidentId = r.body.incidentId;
+    return r;
+  },
+  'sos.link': async (_e, p, ctx) => fetchJson(`${ctx.services.sos}/v1/track/${p.token}/sos`, 'POST', { location: PLACES['Parque Centenario'] }),
+  'ecu911.log': async (_e, _p, ctx) => fetchJson(`${ctx.services.sos}/v1/dev/ecu911`, 'GET'),
+  'admin.incidents': (e, p) => e.device.call('sos', 'GET', `/v1/admin/incidents?status=${p.status}`),
+  'admin.incident': (e, p) => e.device.call('sos', 'GET', `/v1/admin/incidents/${p.incidentId}`),
+  'admin.incident.ack': (e, p) => e.device.call('sos', 'POST', `/v1/admin/incidents/${p.incidentId}/acknowledge`),
+  'admin.incident.escalate': (e, p) => e.device.call('sos', 'POST', `/v1/admin/incidents/${p.incidentId}/escalate`),
+  'admin.incident.close': (e, p) => e.device.call('sos', 'POST', `/v1/admin/incidents/${p.incidentId}/close`, { resolution: p.resolution, legalHoldDays: Number(p.legalHoldDays) }),
+  'admin.manifest': (e, p) => e.device.call('sos', 'GET', `/v1/admin/trips/${p.tripId}/manifest?reason=${encodeURIComponent(p.reason)}`),
+  'admin.disclosure.request': (e, p) => e.device.call('sos', 'POST', '/v1/admin/authority-disclosures', { tripId: p.tripId, authority: p.authority, legalBasis: p.legalBasis }),
+  'admin.disclosure.approve': (e, p) => e.device.call('sos', 'POST', `/v1/admin/authority-disclosures/${p.disclosureId}/approve`),
+
   // ----- Panel admin (módulo 3 y siguientes) -----
   'admin.me': (e) => e.device.call('api', 'GET', '/v1/admin/me'),
   'admin.drivers': (e, p) => e.device.call('api', 'GET', `/v1/admin/drivers?status=${p.status ?? 'under_review'}`),

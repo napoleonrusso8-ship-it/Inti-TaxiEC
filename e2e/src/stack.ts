@@ -54,6 +54,7 @@ export class Stack {
     for (const s of services) this.urls[s] = `http://localhost:${PORT[s]}`;
     const key = () => randomBytes(32).toString('base64');
     const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const manifestKey = generateKeyPairSync('ec', { namedCurve: 'P-256' }).privateKey.export({ format: 'pem', type: 'pkcs8' }).toString();
     const internalSecret = key();
     const common = {
       INTERNAL_SIGNING_SECRET: internalSecret,
@@ -79,7 +80,7 @@ export class Stack {
         WEBAUTHN_RP_ID: 'localhost',
         WEBAUTHN_ORIGINS: 'http://localhost:39101',
       },
-      api: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key(), WEBHOOK_SECRET_KYC: key(), KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', WEBHOOK_SECRET_PAYMENTS: key(), PAYOUT_MIN_CENTS: '100', TRACKING_BASE_URL: 'http://localhost:39104', MATCHING_SWEEP_MS: '250', MATCHING_OFFER_TTL_SECONDS: '5', REVERIFY_PROBABILITY: '0' },
+      api: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key(), WEBHOOK_SECRET_KYC: key(), KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', WEBHOOK_SECRET_PAYMENTS: key(), PAYOUT_MIN_CENTS: '100', MANIFEST_SIGNING_KEY_PEM: manifestKey, SAFETY_PIN_PEPPER: key(), ECU911_AUTO_ESCALATE_SECONDS: '5', TRACKING_BASE_URL: 'http://localhost:39104', MATCHING_SWEEP_MS: '250', MATCHING_OFFER_TTL_SECONDS: '5', REVERIFY_PROBABILITY: '0' },
       sos: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key() },
       realtime: { LOCAL_MASTER_KEY: key(), BLIND_INDEX_KEY: key() },
     };
