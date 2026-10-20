@@ -57,7 +57,8 @@ export class MatchingService implements OnModuleInit, OnModuleDestroy {
       for (const cand of await this.presence.nearby(origin, trip.search_radius_m)) {
         if (tried.has(cand.driverId) || cand.driverId === trip.requester_user_id) continue;
         const st = await this.presence.state(cand.driverId);
-        if (!st || st.tripId || st.seats < trip.party_size) continue;
+        // Las furgonetas solo operan en Taxi Ruta.
+        if (!st || st.tripId || st.vehicleType === 'van' || st.seats < trip.party_size) continue;
         const offerId = randomUUID();
         await c.query(
           `INSERT INTO trips.offers (id, trip_id, driver_id, status, distance_m, expires_at) VALUES ($1, $2, $3, 'pending', $4, now() + make_interval(secs => $5))`,

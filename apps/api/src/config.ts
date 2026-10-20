@@ -64,7 +64,6 @@ const schema = z
     KUSHKI_WEBHOOK_SECRET: z.string().optional(),
     WEBHOOK_SECRET_PAYMENTS: base64Key(32).optional(),
     /** Comisión de la plataforma en puntos básicos (2000 = 20 %). ⚠️ Definir con el negocio. */
-    PLATFORM_COMMISSION_BPS: z.coerce.number().int().min(0).max(5000).default(2000),
     PAYOUT_MIN_CENTS: z.coerce.number().int().min(100).default(500),
     /** Espera tras registrar/cambiar la cuenta bancaria antes de poder retirar (anti robo de cuenta). */
     PAYOUT_ACCOUNT_COOLDOWN_HOURS: z.coerce.number().int().min(0).max(240).default(72),

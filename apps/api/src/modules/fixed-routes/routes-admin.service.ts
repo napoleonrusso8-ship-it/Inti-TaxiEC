@@ -5,7 +5,7 @@ import { AppError, AuditService, type AppRequest } from '@intitaxi/nest-common';
 import { randomUUID } from 'node:crypto';
 import { MAPS, PG_POOL } from '../../tokens.js';
 import type { MapsPort } from '../../infra/maps.js';
-import { FixedRoutesService } from './fixed-routes.service.js';
+import { FixedRoutesService, type VehicleType } from './fixed-routes.service.js';
 
 export interface StopInput {
   stopId?: string;
@@ -102,22 +102,34 @@ export class RoutesAdminService {
   }
 
   /** Reemplaza las franjas tarifarias. Las anteriores se retiran (no se borran: los recibos las citan). */
-  async setFares(routeId: string, rules: FareInput[], req: AppRequest) {
+  async setFares(routeId: string, rules: FareInput[], req: AppRequest, vehicleType: VehicleType = 'taxi') {
     const preview = rules.map((r, i) => ({ id: String(i), name: r.name, startLocal: r.startLocal, endLocal: r.endLocal, amountCents: r.amountCents, validFrom: r.validFrom ?? '2000-01-01', validTo: r.validTo ?? null, priority: r.priority ?? 0 }));
     const coverage = validateFareCoverage(preview, localParts(new Date()).date);
     if (!coverage.ok) throw new AppError(400, 'fare_coverage', `Las franjas deben cubrir las 24 h sin solaparse. Huecos: ${coverage.gaps.join(', ') || '—'}; solapes: ${coverage.overlaps.join(', ') || '—'}`);
     await withTransaction(this.pool, async (c) => {
       await this.#editable(c, routeId);
-      await c.query(`UPDATE fixed_routes.fare_rules SET retired_at = now() WHERE route_id = $1 AND retired_at IS NULL`, [routeId]);
+      // Solo se reemplazan las tarifas del tipo de vehículo indicado (taxi o furgoneta).
+      await c.query(`UPDATE fixed_routes.fare_rules SET retired_at = now() WHERE route_id = $1 AND vehicle_type = $2 AND retired_at IS NULL`, [routeId, vehicleType]);
       for (const r of preview) {
         await c.query(
-          `INSERT INTO fixed_routes.fare_rules (id, route_id, name, start_local, end_local, amount_cents, valid_from, valid_to, priority) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-          [randomUUID(), routeId, r.name, r.startLocal, r.endLocal, r.amountCents, r.validFrom, r.validTo, r.priority],
+          `INSERT INTO fixed_routes.fare_rules (id, route_id, name, start_local, end_local, amount_cents, valid_from, valid_to, priority, vehicle_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [randomUUID(), routeId, r.name, r.startLocal, r.endLocal, r.amountCents, r.validFrom, r.validTo, r.priority, vehicleType],
         );
       }
-      await this.audit.record({ action: 'route.fares_set', resourceType: 'route', resourceId: routeId, metadata: { rules: preview.map((r) => `${r.name} ${r.startLocal}-${r.endLocal} ${r.amountCents}`).join('; ') } }, req, c);
+      await this.audit.record({ action: 'route.fares_set', resourceType: 'route', resourceId: routeId, metadata: { vehicleType, rules: preview.map((r) => `${r.name} ${r.startLocal}-${r.endLocal} ${r.amountCents}`).join('; ') } }, req, c);
     });
     return { fares: await this.routes.rules(routeId), coverage };
+  }
+
+  /** Cada tipo de vehículo que tenga tarifas debe cubrir las 24 h; al menos un tipo debe tener tarifas. */
+  async #coverage(routeId: string, c?: PoolClient) {
+    const rules = await this.routes.rules(routeId, c ?? this.pool);
+    const date = localParts(new Date()).date;
+    const byType = Object.fromEntries(
+      (['taxi', 'van'] as const).filter((t) => rules.some((r) => r.vehicleType === t)).map((t) => [t, validateFareCoverage(rules.filter((r) => r.vehicleType === t), date)]),
+    );
+    const types = Object.values(byType);
+    return { ok: types.length > 0 && types.every((x) => x.ok), byType };
   }
 
   async setSchedules(routeId: string, schedules: { days: number[]; start: string; end: string; headwayMinutes: number }[], req: AppRequest) {
@@ -174,7 +186,7 @@ export class RoutesAdminService {
       await this.pool.query(`UPDATE fixed_routes.directions SET path = $2, validated_at = now(), validation_report = $3 WHERE id = $1`, [d.id, JSON.stringify(path), dirReport]);
       report[d.direction] = dirReport;
     }
-    const coverage = validateFareCoverage(await this.routes.rules(routeId), localParts(new Date()).date);
+    const coverage = await this.#coverage(routeId);
     if (!coverage.ok) ok = false;
     await this.audit.record({ action: 'route.validate', resourceType: 'route', resourceId: routeId, metadata: { ok } }, req);
     return { ok, fares: coverage, directions: report };
@@ -187,7 +199,7 @@ export class RoutesAdminService {
       if (!EDITABLE.includes(r.status)) throw new AppError(409, 'invalid_state', 'La ruta no está en borrador ni pausada');
       const dirs = (await c.query(`SELECT validated_at, validation_report FROM fixed_routes.directions WHERE route_id = $1`, [routeId])).rows;
       if (dirs.length < 2 || dirs.some((d) => !d.validated_at || !d.validation_report?.ok)) throw new AppError(409, 'not_validated', 'Valida ambos sentidos de la ruta antes de solicitar la publicación');
-      if (!validateFareCoverage(await this.routes.rules(routeId, c), localParts(new Date()).date).ok) throw new AppError(409, 'fare_coverage', 'Las tarifas no cubren las 24 h');
+      if (!(await this.#coverage(routeId, c)).ok) throw new AppError(409, 'fare_coverage', 'Las tarifas de cada tipo de vehículo deben cubrir las 24 h');
       await c.query(`UPDATE fixed_routes.routes SET status = 'pending_approval', publish_requested_by = $2 WHERE id = $1`, [routeId, adminId]);
       await this.audit.record({ action: 'route.publish_request', resourceType: 'route', resourceId: routeId }, req, c);
     });

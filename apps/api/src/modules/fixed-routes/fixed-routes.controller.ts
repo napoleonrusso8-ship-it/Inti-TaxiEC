@@ -7,7 +7,8 @@ import { FixedRoutesService } from './fixed-routes.service.js';
 import { RoutesAdminService } from './routes-admin.service.js';
 
 const direction = z.enum(['outbound', 'inbound']);
-const seats = z.number().int().min(1).max(8);
+const seats = z.number().int().min(1).max(15);
+const vehicleType = z.enum(['taxi', 'van']);
 const text = (max: number) => z.string().trim().min(1).max(max).regex(/^[^<>]*$/);
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -51,7 +52,7 @@ export class RoutesController {
   @Post(':id/quotes')
   @HttpCode(200)
   quote(@Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
-    const i = parseInput(z.object({ direction, boardingStopId: z.string().uuid(), alightingStopId: z.string().uuid(), seats }), body);
+    const i = parseInput(z.object({ direction, boardingStopId: z.string().uuid(), alightingStopId: z.string().uuid(), seats, vehicleType: vehicleType.optional() }), body);
     return this.routes.quote(id, i);
   }
 
@@ -175,8 +176,8 @@ export class AdminRoutesController {
   @Put(':id/fares')
   @AdminWrite()
   fares(@Req() req: AppRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
-    const i = parseInput(z.object({ rules: z.array(fareInput).min(1).max(24) }), body);
-    return this.admin.setFares(id, i.rules, req);
+    const i = parseInput(z.object({ rules: z.array(fareInput).min(1).max(24), vehicleType: vehicleType.default('taxi') }), body);
+    return this.admin.setFares(id, i.rules, req, i.vehicleType);
   }
 
   @Put(':id/schedules')

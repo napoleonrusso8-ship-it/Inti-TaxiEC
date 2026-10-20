@@ -106,12 +106,12 @@ export class DriverTripsController {
     const issues = await this.drivers.eligibility(auth.userId);
     if (issues.length) throw new AppError(403, 'not_eligible', `No puedes conectarte: ${issues.join(', ')}`);
     await this.kyc.assertDriverIdentityFresh(auth.userId);
-    const v = await this.pool.query<{ seats_passenger: number }>(`SELECT seats_passenger FROM drivers.vehicles WHERE id = $1 AND driver_id = $2 AND status = 'approved'`, [i.vehicleId, auth.userId]);
+    const v = await this.pool.query<{ seats_passenger: number; vehicle_type: 'taxi' | 'van' }>(`SELECT seats_passenger, vehicle_type FROM drivers.vehicles WHERE id = $1 AND driver_id = $2 AND status = 'approved'`, [i.vehicleId, auth.userId]);
     if (!v.rows[0]) throw new AppError(404, 'not_found', 'Vehículo no encontrado o no aprobado');
     await this.pool.query('UPDATE drivers.online_sessions SET ended_at = now() WHERE driver_id = $1 AND ended_at IS NULL', [auth.userId]);
     const sessionId = randomUUID();
     await this.pool.query('INSERT INTO drivers.online_sessions (id, driver_id, vehicle_id, device_id) VALUES ($1, $2, $3, $4)', [sessionId, auth.userId, i.vehicleId, device.deviceId]);
-    await this.presence.goOnline(auth.userId, { vehicleId: i.vehicleId, seats: v.rows[0].seats_passenger, sessionId }, { ...i.location, at: Date.now() });
+    await this.presence.goOnline(auth.userId, { vehicleId: i.vehicleId, seats: v.rows[0].seats_passenger, sessionId, vehicleType: v.rows[0].vehicle_type }, { ...i.location, at: Date.now() });
     await this.fraud.onDeviceUse(device.deviceId, auth.userId);
     await this.audit.record({ action: 'driver.online', resourceType: 'driver', resourceId: auth.userId, metadata: { vehicleId: i.vehicleId } }, req);
     return { online: true, sessionId };

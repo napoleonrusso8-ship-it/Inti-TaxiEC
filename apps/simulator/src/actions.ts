@@ -114,7 +114,7 @@ export const actions: Record<string, Handler> = {
   'driver.apply': (e, p) =>
     e.device.call('api', 'POST', '/v1/driver/application', { licenseNumber: p.licenseNumber, licenseCategory: p.licenseCategory, licenseExpiresOn: p.licenseExpiresOn }),
   'vehicle.add': async (e, p) => {
-    const r = await e.device.call('api', 'POST', '/v1/driver/vehicles', { plate: p.plate, make: p.make, model: p.model, year: Number(p.year), color: p.color, seats: Number(p.seats) });
+    const r = await e.device.call('api', 'POST', '/v1/driver/vehicles', { plate: p.plate, make: p.make, model: p.model, year: Number(p.year), color: p.color, seats: Number(p.seats), vehicleType: p.vehicleType || 'taxi' });
     if (r.status === 201) e.data.vehicleId = r.body.id;
     return r;
   },
@@ -416,7 +416,11 @@ export const actions: Record<string, Handler> = {
     const d = await e.device.call('api', 'GET', `/v1/admin/drivers/${p.driverId}`);
     if (d.status !== 200) return d;
     const results = [];
-    for (const doc of d.body.documents) results.push((await e.device.call('api', 'POST', `/v1/admin/drivers/${p.driverId}/documents/${doc.id}/review`, { decision: 'approved' })).status);
+    for (const doc of d.body.documents) {
+      const v = d.body.vehicles.find((x: any) => x.id === doc.vehicleId);
+      const body = { decision: 'approved', ...(doc.type === 'registration' ? { confirmedSeats: v?.seats_passenger } : {}) };
+      results.push((await e.device.call('api', 'POST', `/v1/admin/drivers/${p.driverId}/documents/${doc.id}/review`, body)).status);
+    }
     return { status: 200, body: { revisados: results.length, estados: results } };
   },
   'admin.driver.decide': (e, p) => e.device.call('api', 'POST', `/v1/admin/drivers/${p.driverId}/decision`, { decision: p.decision, reason: p.reason }),

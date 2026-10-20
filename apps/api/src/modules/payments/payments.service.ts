@@ -11,7 +11,8 @@ import { TripEvents } from '../trips/trip-events.js';
 import { TripsService, type TripRow } from '../trips/trips.service.js';
 import { FraudService } from './fraud.service.js';
 import type { GatewayEvent, PaymentGateway } from './gateway.js';
-import { liabilityBalance, postLedger, split } from './ledger.js';
+import { CommissionService } from './commission.service.js';
+import { liabilityBalance, postLedger } from './ledger.js';
 
 const refAad = (id: string) => `payments.payment_methods.gateway_ref:${id}`;
 
@@ -32,6 +33,7 @@ export class PaymentsService implements OnModuleInit {
     @Inject(NotificationsService) private readonly notify: NotificationsService,
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(CommissionService) private readonly commissions: CommissionService,
   ) {}
 
   onModuleInit() {
@@ -112,7 +114,9 @@ export class PaymentsService implements OnModuleInit {
     const exists = await this.pool.query('SELECT 1 FROM payments.payments WHERE idempotency_key = $1', [`trip:${tripId}:charge`]);
     if (exists.rowCount) return;
     const fare = t.final_fare_cents;
-    const { commission, driver } = split(fare, this.config.PLATFORM_COMMISSION_BPS);
+    // Taxi Ruta: el pasajero paga la tarifa completa al conductor; la plataforma cobra un fijo por recorrido al terminarlo.
+    const commission = t.type === 'fixed_route' ? 0 : await this.commissions.onDemand(fare);
+    const driver = fare - commission;
     const paymentId = randomUUID();
     let status: 'approved' | 'declined' | 'cash_collected' = 'cash_collected';
     let gatewayRef: string | undefined;
@@ -184,7 +188,7 @@ export class PaymentsService implements OnModuleInit {
       t.type === 'fixed_route'
         ? (
             await this.pool.query(
-              `SELECT r.code, r.name AS route, b.fare_rule_name AS "fareRule", b.unit_fare_cents AS "unitFareCents", b.seats, sb.name AS "boardingStop", sa.name AS "alightingStop", b.boarded_at
+              `SELECT r.code, r.name AS route, i.vehicle_type AS "vehicleType", b.fare_rule_name AS "fareRule", b.unit_fare_cents AS "unitFareCents", b.seats, sb.name AS "boardingStop", sa.name AS "alightingStop", b.boarded_at
                FROM fixed_routes.bookings b JOIN fixed_routes.instances i ON i.id = b.instance_id JOIN fixed_routes.directions d ON d.id = i.direction_id
                JOIN fixed_routes.routes r ON r.id = d.route_id JOIN fixed_routes.stops sb ON sb.id = b.boarding_stop_id JOIN fixed_routes.stops sa ON sa.id = b.alighting_stop_id
                WHERE b.trip_id = $1`,

@@ -23,10 +23,10 @@ export class PresenceService {
 
   constructor(@Inject(REDIS) private readonly redis: Redis) {}
 
-  async goOnline(driverId: string, info: { vehicleId: string; seats: number; sessionId: string }, loc: DriverLocation) {
+  async goOnline(driverId: string, info: { vehicleId: string; seats: number; sessionId: string; vehicleType?: 'taxi' | 'van' }, loc: DriverLocation) {
     await this.redis
       .multi()
-      .hset(`driver:state:${driverId}`, { vehicleId: info.vehicleId, seats: String(info.seats), sessionId: info.sessionId })
+      .hset(`driver:state:${driverId}`, { vehicleId: info.vehicleId, seats: String(info.seats), sessionId: info.sessionId, vehicleType: info.vehicleType ?? 'taxi' })
       .expire(`driver:state:${driverId}`, 12 * 3600)
       .exec();
     await this.updateLocation(driverId, loc, { available: true });
@@ -38,7 +38,7 @@ export class PresenceService {
 
   async state(driverId: string) {
     const s = await this.redis.hgetall(`driver:state:${driverId}`);
-    return s.sessionId ? { vehicleId: s.vehicleId!, seats: Number(s.seats), sessionId: s.sessionId, tripId: s.tripId || null } : null;
+    return s.sessionId ? { vehicleId: s.vehicleId!, seats: Number(s.seats), sessionId: s.sessionId, tripId: s.tripId || null, vehicleType: (s.vehicleType ?? 'taxi') as 'taxi' | 'van' } : null;
   }
 
   async lastLocation(driverId: string): Promise<DriverLocation | null> {

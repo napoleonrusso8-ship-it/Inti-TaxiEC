@@ -230,7 +230,15 @@ async function driverDetail(s, id) {
         const r = reason && (await run(() => s.call('api', 'POST', `/v1/admin/drivers/${id}/documents/${doc.id}/view-url`, { reason })));
         if (r) window.open(r.url, '_blank', 'noopener,noreferrer');
       }),
-      button('Aprobar', () => run(() => s.call('api', 'POST', `/v1/admin/drivers/${id}/documents/${doc.id}/review`, { decision: 'approved' }), 'Documento aprobado').then(() => driverDetail(s, id))),
+      button('Aprobar', async () => {
+        let confirmedSeats;
+        if (doc.type === 'registration') {
+          const n = prompt('¿Cuántos asientos para pasajeros indica la matrícula?');
+          if (n === null) return;
+          confirmedSeats = Number(n);
+        }
+        await run(() => s.call('api', 'POST', `/v1/admin/drivers/${id}/documents/${doc.id}/review`, { decision: 'approved', ...(confirmedSeats ? { confirmedSeats } : {}) }), 'Documento aprobado').then(() => driverDetail(s, id));
+      }),
       button('Rechazar', async () => {
         const reason = ask('Motivo del rechazo:');
         if (reason) await run(() => s.call('api', 'POST', `/v1/admin/drivers/${id}/documents/${doc.id}/review`, { decision: 'rejected', reason }), 'Documento rechazado').then(() => driverDetail(s, id));

@@ -29,7 +29,7 @@ describe('Tarjetas', () => {
     const receipt = await p.d.call('api', 'GET', `/v1/trips/${trip.body.id}/receipt`);
     expect(receipt.body).toMatchObject({ payment: { card: 'VISA •••• 4242', status: 'approved' }, timezone: 'America/Guayaquil', driver: { plate: drv.plate } });
     const fare = pay.amount_cents;
-    expect(await balance(`driver_payable:${drv.userId}`)).toBe(fare - Math.round(fare * 0.2));
+    expect(await balance(`driver_payable:${drv.userId}`)).toBe(fare - Math.round(fare * 0.09));
     // Ninguna columna guarda números de tarjeta
     const { rows } = await s.pool.query(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'payments'`);
     expect(rows.some((r) => /pan|cvv|card_number/i.test(r.column_name))).toBe(false);
@@ -86,7 +86,7 @@ describe('Efectivo y billetera', () => {
     const { drv, trip } = await completedTrip(s, { at: zone(4), reviewer });
     const pay = await paymentOf(trip.body.id);
     expect(pay.status).toBe('cash_collected');
-    expect(await balance(`driver_payable:${drv.userId}`)).toBe(-Math.round(pay.amount_cents * 0.2));
+    expect(await balance(`driver_payable:${drv.userId}`)).toBe(-Math.round(pay.amount_cents * 0.09));
   });
 
   it('billetera sin recargas: solo créditos de soporte; se usa para pagar', async () => {

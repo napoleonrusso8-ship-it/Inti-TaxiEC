@@ -9,6 +9,8 @@ import type { AppConfig } from '../../config.js';
 import { DriversService } from '../drivers/drivers.service.js';
 import { KycService } from '../kyc/kyc.service.js';
 import { PresenceService } from '../trips/presence.service.js';
+import { CommissionService } from '../payments/commission.service.js';
+import { postLedger } from '../payments/ledger.js';
 import { TripEvents } from '../trips/trip-events.js';
 import { TripTrackingService } from '../trips/trip-tracking.service.js';
 import { tripAad, TripsService } from '../trips/trips.service.js';
@@ -24,6 +26,8 @@ export interface StopView {
 }
 
 const BOOKING_TTL_MIN = 45;
+export type VehicleType = 'taxi' | 'van';
+export const VEHICLE_LABEL: Record<VehicleType, string> = { taxi: 'Taxi', van: 'Furgoneta' };
 const MAX_PIN_ATTEMPTS = 3;
 
 @Injectable()
@@ -43,6 +47,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     @Inject(KycService) private readonly kyc: KycService,
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(CommissionService) private readonly commissions: CommissionService,
   ) {}
 
   onModuleInit() {
@@ -63,13 +68,14 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
 
   // ---------- Lectura (pasajeros) ----------
 
-  async rules(routeId: string, c: Pool | PoolClient = this.pool): Promise<FareRule[]> {
+  /** Reglas tarifarias vigentes (no retiradas); con `vehicleType`, solo las de ese tipo de vehículo. */
+  async rules(routeId: string, c: Pool | PoolClient = this.pool, vehicleType?: VehicleType): Promise<(FareRule & { vehicleType: VehicleType })[]> {
     const { rows } = await c.query(
-      `SELECT id, name, to_char(start_local, 'HH24:MI:SS') AS s, to_char(end_local, 'HH24:MI:SS') AS e, amount_cents, to_char(valid_from, 'YYYY-MM-DD') AS vf, to_char(valid_to, 'YYYY-MM-DD') AS vt, priority
-       FROM fixed_routes.fare_rules WHERE route_id = $1 AND retired_at IS NULL`,
-      [routeId],
+      `SELECT id, name, to_char(start_local, 'HH24:MI:SS') AS s, to_char(end_local, 'HH24:MI:SS') AS e, amount_cents, to_char(valid_from, 'YYYY-MM-DD') AS vf, to_char(valid_to, 'YYYY-MM-DD') AS vt, priority, vehicle_type
+       FROM fixed_routes.fare_rules WHERE route_id = $1 AND retired_at IS NULL AND ($2::text IS NULL OR vehicle_type = $2)`,
+      [routeId, vehicleType ?? null],
     );
-    return rows.map((r) => ({ id: r.id, name: r.name, startLocal: r.s, endLocal: r.e, amountCents: r.amount_cents, validFrom: r.vf, validTo: r.vt, priority: r.priority }));
+    return rows.map((r) => ({ id: r.id, name: r.name, startLocal: r.s, endLocal: r.e, amountCents: r.amount_cents, validFrom: r.vf, validTo: r.vt, priority: r.priority, vehicleType: r.vehicle_type }));
   }
 
   async stops(directionId: string, c: Pool | PoolClient = this.pool): Promise<StopView[]> {
@@ -95,7 +101,12 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
 
   async listActive() {
     const { rows } = await this.pool.query(`SELECT id, code, name, city, corridor FROM fixed_routes.routes WHERE status = 'active' ORDER BY code`);
-    return Promise.all(rows.map(async (r) => ({ ...r, currentFare: this.#fareView(fareAt(await this.rules(r.id), new Date())) })));
+    return Promise.all(
+      rows.map(async (r) => {
+        const [taxi, van] = [fareAt(await this.rules(r.id, this.pool, 'taxi'), new Date()), fareAt(await this.rules(r.id, this.pool, 'van'), new Date())];
+        return { ...r, currentFare: this.#fareView(taxi), currentFares: { taxi: this.#fareView(taxi), van: this.#fareView(van) } };
+      }),
+    );
   }
 
   #fareView(rule: FareRule | null) {
@@ -111,8 +122,9 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     return {
       ...r,
       timezone: 'America/Guayaquil',
-      currentFare: this.#fareView(fareAt(rules, new Date())),
-      fares: rules.map((f) => ({ name: f.name, from: f.startLocal.slice(0, 5), to: f.endLocal.slice(0, 5), amountCents: f.amountCents, validFrom: f.validFrom, validTo: f.validTo })),
+      currentFare: this.#fareView(fareAt(rules.filter((f) => f.vehicleType === 'taxi'), new Date())),
+      currentFares: { taxi: this.#fareView(fareAt(rules.filter((f) => f.vehicleType === 'taxi'), new Date())), van: this.#fareView(fareAt(rules.filter((f) => f.vehicleType === 'van'), new Date())) },
+      fares: rules.map((f) => ({ vehicleType: f.vehicleType, name: f.name, from: f.startLocal.slice(0, 5), to: f.endLocal.slice(0, 5), amountCents: f.amountCents, validFrom: f.validFrom, validTo: f.validTo })),
       fareNote: 'La tarifa se fija con la hora de Guayaquil en el momento en que confirmas que subiste al vehículo.',
       schedules,
       directions: await Promise.all(dirs.map(async (d) => {
@@ -135,12 +147,14 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     return { dir, stops, from, to, path, distanceM };
   }
 
-  async quote(routeId: string, input: { direction: string; boardingStopId: string; alightingStopId: string; seats: number }) {
+  async quote(routeId: string, input: { direction: string; boardingStopId: string; alightingStopId: string; seats: number; vehicleType?: VehicleType }) {
     const v = await this.#validateStops(routeId, input.direction, input.boardingStopId, input.alightingStopId);
-    const rule = fareAt(await this.rules(routeId), new Date());
+    const vehicleType = input.vehicleType ?? 'taxi';
+    const rule = fareAt(await this.rules(routeId, this.pool, vehicleType), new Date());
     if (!rule) throw new AppError(409, 'no_fare', 'La ruta no tiene tarifa vigente en este horario');
     return {
       estimated: true,
+      vehicleType,
       unitFareCents: rule.amountCents,
       fareName: rule.name,
       seats: input.seats,
@@ -160,16 +174,28 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     const path = this.#path(dir, stops);
     const stop = stopId ? stops.find((s) => s.id === stopId) : undefined;
     const { rows } = await this.pool.query(
-      `SELECT i.id, i.driver_id, i.seats_total - i.seats_taken AS free, v.plate, v.color, v.make, v.model
+      `SELECT i.id, i.driver_id, i.vehicle_type, i.seats_total - i.seats_taken AS free, v.plate, v.color, v.make, v.model
        FROM fixed_routes.instances i JOIN drivers.vehicles v ON v.id = i.vehicle_id WHERE i.direction_id = $1 AND i.status = 'in_service'`,
       [dir.id],
     );
+    const fares = { taxi: fareAt(await this.rules(routeId, this.pool, 'taxi'), new Date()), van: fareAt(await this.rules(routeId, this.pool, 'van'), new Date()) };
     const out = [];
     for (const r of rows) {
       const loc = await this.presence.lastLocation(r.driver_id);
       const eta = loc && stop ? etaSeconds(path, loc, stop) : null;
       if (stop && loc && eta === null) continue; // ya pasó la parada
-      out.push({ instanceId: r.id, seatsAvailable: r.free, vehicle: { plate: r.plate, color: r.color, make: r.make, model: r.model }, location: loc ? { lat: loc.lat, lng: loc.lng } : null, etaSeconds: eta });
+      const fare = fares[r.vehicle_type as VehicleType];
+      out.push({
+        instanceId: r.id,
+        vehicleType: r.vehicle_type,
+        vehicleLabel: VEHICLE_LABEL[r.vehicle_type as VehicleType],
+        seatsAvailable: r.free,
+        vehicle: { plate: r.plate, color: r.color, make: r.make, model: r.model },
+        location: loc ? { lat: loc.lat, lng: loc.lng } : null,
+        etaSeconds: eta,
+        currentUnitFareCents: fare?.amountCents ?? null,
+        currentFareName: fare?.name ?? null,
+      });
     }
     return out.sort((a, b) => (a.etaSeconds ?? 1e9) - (b.etaSeconds ?? 1e9));
   }
@@ -193,8 +219,8 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
       if (inst.seats_total - inst.seats_taken < input.seats) throw new AppError(409, 'not_enough_seats', 'No hay asientos suficientes en este vehículo');
       const loc = await this.presence.lastLocation(inst.driver_id);
       if (loc && etaSeconds(v.path, loc, v.from) === null) throw new AppError(409, 'stop_passed', 'Este vehículo ya pasó por tu parada');
-      const rule = fareAt(await this.rules(routeId, c), new Date());
-      if (!rule) throw new AppError(409, 'no_fare', 'La ruta no tiene tarifa vigente en este horario');
+      const rule = fareAt(await this.rules(routeId, c, inst.vehicle_type), new Date());
+      if (!rule) throw new AppError(409, 'no_fare', `La ruta no tiene tarifa vigente para ${VEHICLE_LABEL[inst.vehicle_type as VehicleType].toLowerCase()} en este horario`);
       driverId = inst.driver_id;
       await c.query(
         `INSERT INTO trips.trips (id, type, requester_user_id, driver_id, vehicle_id, status, origin_lat, origin_lng, dest_lat, dest_lng, distance_m, duration_s,
@@ -224,7 +250,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
 
   async bookingView(userId: string, bookingId: string) {
     const { rows } = await this.pool.query(
-      `SELECT b.*, sb.name AS boarding, sa.name AS alighting, v.plate, v.color, v.make, v.model
+      `SELECT b.*, sb.name AS boarding, sa.name AS alighting, v.plate, v.color, v.make, v.model, i.vehicle_type
        FROM fixed_routes.bookings b JOIN fixed_routes.stops sb ON sb.id = b.boarding_stop_id JOIN fixed_routes.stops sa ON sa.id = b.alighting_stop_id
        JOIN fixed_routes.instances i ON i.id = b.instance_id JOIN drivers.vehicles v ON v.id = i.vehicle_id
        WHERE b.id = $1 AND b.requester_user_id = $2`,
@@ -233,7 +259,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     const b = rows[0];
     if (!b) throw new AppError(404, 'not_found', 'Recurso no encontrado');
     return {
-      status: b.status, seats: b.seats, boardingStop: b.boarding, alightingStop: b.alighting,
+      status: b.status, seats: b.seats, boardingStop: b.boarding, alightingStop: b.alighting, vehicleType: b.vehicle_type, vehicleLabel: VEHICLE_LABEL[b.vehicle_type as VehicleType],
       vehicle: { plate: b.plate, color: b.color, make: b.make, model: b.model },
       fare: b.unit_fare_cents
         ? { final: true, ruleName: b.fare_rule_name, unitCents: b.unit_fare_cents, totalCents: b.unit_fare_cents * b.seats }
@@ -294,17 +320,18 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     const st = await this.presence.state(driverId);
     if (!st) throw new AppError(409, 'offline', 'Conéctate primero (con tu ubicación)');
     if (st.tripId) throw new AppError(409, 'busy', 'Termina tu viaje o recorrido actual');
-    const v = (await this.pool.query(`SELECT seats_passenger FROM drivers.vehicles WHERE id = $1 AND driver_id = $2 AND status = 'approved'`, [vehicleId, driverId])).rows[0];
+    const v = (await this.pool.query(`SELECT seats_passenger, vehicle_type FROM drivers.vehicles WHERE id = $1 AND driver_id = $2 AND status = 'approved'`, [vehicleId, driverId])).rows[0];
     if (!v) throw new AppError(404, 'not_found', 'Vehículo no encontrado o no aprobado');
+    if (!(await this.rules(routeId, this.pool, v.vehicle_type)).length) throw new AppError(409, 'no_fare', `Esta ruta no tiene tarifas para ${VEHICLE_LABEL[v.vehicle_type as VehicleType].toLowerCase()}`);
     const id = randomUUID();
-    await this.pool.query(`INSERT INTO fixed_routes.instances (id, direction_id, driver_id, vehicle_id, status, seats_total) VALUES ($1, $2, $3, $4, 'in_service', $5)`, [id, dir.id, driverId, vehicleId, v.seats_passenger])
+    await this.pool.query(`INSERT INTO fixed_routes.instances (id, direction_id, driver_id, vehicle_id, status, seats_total, vehicle_type) VALUES ($1, $2, $3, $4, 'in_service', $5, $6)`, [id, dir.id, driverId, vehicleId, v.seats_passenger, v.vehicle_type])
       .catch((e: { code?: string }) => {
         throw e.code === '23505' ? new AppError(409, 'busy', 'Ya tienes un recorrido en servicio') : e;
       });
     // Mientras hace la ruta no recibe viajes bajo demanda.
     await this.presence.setTrip(driverId, `route:${id}`);
     await this.audit.record({ action: 'route.instance_start', resourceType: 'route', resourceId: routeId, metadata: { instanceId: id, direction } }, req);
-    return { instanceId: id, seatsTotal: v.seats_passenger };
+    return { instanceId: id, seatsTotal: v.seats_passenger, vehicleType: v.vehicle_type };
   }
 
   async #ownInstance(driverId: string, instanceId: string, c: Pool | PoolClient = this.pool) {
@@ -322,7 +349,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
        WHERE b.instance_id = $1 AND b.status IN ('reserved', 'boarded') ORDER BY b.created_at`,
       [inst.id],
     );
-    return { instanceId: inst.id, seatsTotal: inst.seats_total, seatsTaken: inst.seats_taken, bookings: rows };
+    return { instanceId: inst.id, vehicleType: inst.vehicle_type, seatsTotal: inst.seats_total, seatsTaken: inst.seats_taken, bookings: rows };
   }
 
   /** Confirmación de abordaje con el PIN del pasajero: aquí se FIJA la tarifa (hora de Guayaquil). */
@@ -339,8 +366,10 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
       throw new AppError(400, 'invalid_pin', 'PIN incorrecto');
     }
     const boardedAt = new Date();
-    const routeId = (await this.pool.query(`SELECT d.route_id FROM fixed_routes.instances i JOIN fixed_routes.directions d ON d.id = i.direction_id WHERE i.id = $1`, [instanceId])).rows[0].route_id;
-    const rule = fareAt(await this.rules(routeId), boardedAt);
+    const { route_id: routeId, vehicle_type: vehicleType } = (
+      await this.pool.query(`SELECT d.route_id, i.vehicle_type FROM fixed_routes.instances i JOIN fixed_routes.directions d ON d.id = i.direction_id WHERE i.id = $1`, [instanceId])
+    ).rows[0];
+    const rule = fareAt(await this.rules(routeId, this.pool, vehicleType), boardedAt);
     if (!rule) throw new AppError(409, 'no_fare', 'Sin tarifa vigente');
     await withTransaction(this.pool, async (c) => {
       const u = await c.query(
@@ -380,12 +409,21 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
       if (onboard.rowCount) throw new AppError(409, 'passengers_on_board', 'Aún hay pasajeros a bordo');
       const pending = (await c.query(`SELECT * FROM fixed_routes.bookings WHERE instance_id = $1 AND status = 'reserved' FOR UPDATE`, [instanceId])).rows;
       for (const b of pending) await this.#release(c, b, 'cancelled', 'driver');
-      await c.query(`UPDATE fixed_routes.instances SET status = 'finished', finished_at = now() WHERE id = $1`, [instanceId]);
-      await this.audit.record({ action: 'route.instance_finish', resourceType: 'route_instance', resourceId: instanceId, metadata: { cancelledBookings: pending.length } }, req, c);
+      const done = await c.query(`UPDATE fixed_routes.instances SET status = 'finished', finished_at = now() WHERE id = $1 AND status = 'in_service'`, [instanceId]);
+      if (!done.rowCount) throw new AppError(409, 'invalid_state', 'El recorrido ya terminó');
+      // Comisión fija por recorrido (solo si llevó pasajeros): se descuenta de lo que se le debe al conductor.
+      const carried = await c.query(`SELECT 1 FROM fixed_routes.bookings WHERE instance_id = $1 AND status = 'completed' LIMIT 1`, [instanceId]);
+      const fee = carried.rowCount ? await this.commissions.routeFee(inst.vehicle_type, c) : 0;
+      if (fee > 0) {
+        await postLedger(c, 'route_instance_fee', { type: 'route_instance', id: instanceId }, [{ account: `driver_payable:${driverId}`, debit: fee }, { account: 'platform_revenue', credit: fee }]);
+      }
+      await c.query('UPDATE fixed_routes.instances SET platform_fee_cents = $2 WHERE id = $1', [instanceId, fee]);
+      await this.audit.record({ action: 'route.instance_finish', resourceType: 'route_instance', resourceId: instanceId, metadata: { cancelledBookings: pending.length, feeCents: fee } }, req, c);
       return pending;
     });
     await this.presence.setTrip(driverId, null);
     for (const b of ended) this.events.emitStatus({ tripId: b.trip_id, from: 'accepted', to: 'cancelled', requesterUserId: b.requester_user_id, driverId });
-    return { instanceId, status: 'finished', cancelledBookings: ended.length };
+    const fee = (await this.pool.query('SELECT platform_fee_cents FROM fixed_routes.instances WHERE id = $1', [instanceId])).rows[0].platform_fee_cents;
+    return { instanceId, status: 'finished', cancelledBookings: ended.length, platformFeeCents: fee };
   }
 }

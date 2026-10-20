@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { AuthContext } from '@intitaxi/auth-verifier';
 import type { Pool } from '@intitaxi/db';
 import { AccessTokenGuard, AppError, AttestationGuard, Auth, Device, parseInput, RecentMfaGuard, RequirePhishingResistant, type AppRequest, type AttestedDevice } from '@intitaxi/nest-common';
@@ -7,6 +7,7 @@ import type { AppConfig } from '../../config.js';
 import { CONFIG, PAYMENT_GATEWAY, PG_POOL } from '../../tokens.js';
 import { AdminGuard, AdminRoles, AdminWrite } from '../admin/admin.guard.js';
 import { MockGateway, type PaymentGateway } from './gateway.js';
+import { CommissionService } from './commission.service.js';
 import { PaymentsService } from './payments.service.js';
 import { BANKS, PayoutsService } from './payouts.service.js';
 
@@ -107,6 +108,7 @@ export class AdminPaymentsController {
     @Inject(PG_POOL) private readonly pool: Pool,
     @Inject(PaymentsService) private readonly payments: PaymentsService,
     @Inject(PayoutsService) private readonly payouts: PayoutsService,
+    @Inject(CommissionService) private readonly commissions: CommissionService,
   ) {}
 
   @Post('payments/:id/refund')
@@ -126,6 +128,24 @@ export class AdminPaymentsController {
     const i = parseInput(z.object({ amountCents: z.number().int().positive().max(5000), reason: z.string().min(5).max(300) }), body);
     if (userId === auth.userId) throw new AppError(403, 'forbidden', 'No puedes acreditarte a ti mismo');
     return this.payments.creditWallet(auth.userId, userId, i.amountCents, i.reason, req);
+  }
+
+  @Get('commissions')
+  @AdminRoles('super_admin', 'fraud_analyst')
+  commissionSettings() {
+    return this.commissions.settings();
+  }
+
+  /** Solo super_admin: cambia las comisiones (queda auditado con los valores nuevos). */
+  @Put('commissions')
+  @AdminRoles('super_admin')
+  @AdminWrite()
+  updateCommissions(@Req() req: AppRequest, @Auth() auth: AuthContext, @Body() body: unknown) {
+    const i = parseInput(
+      z.object({ on_demand_bps: z.number().int().min(0).optional(), route_fee_taxi_cents: z.number().int().min(0).optional(), route_fee_van_cents: z.number().int().min(0).optional() }).strict(),
+      body,
+    );
+    return this.commissions.update(auth.userId, i, req);
   }
 
   @Get('fraud/signals')

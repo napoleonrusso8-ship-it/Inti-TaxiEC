@@ -80,24 +80,27 @@ export class DriversService {
     return p;
   }
 
-  async addVehicle(userId: string, v: { plate: string; make: string; model: string; year: number; color: string; seats: number }, req: AppRequest) {
+  async addVehicle(userId: string, v: { plate: string; make: string; model: string; year: number; color: string; seats: number; vehicleType: 'taxi' | 'van' }, req: AppRequest) {
     const profile = await this.requireProfile(userId);
     if (profile.status === 'suspended') throw new AppError(403, 'suspended', 'Cuenta suspendida');
     const plate = normalizePlate(v.plate);
     if (!plate) throw new AppError(400, 'invalid_plate', 'Placa inválida (formato AAA-1234)');
     const minYear = new Date().getFullYear() - this.config.VEHICLE_MAX_AGE_YEARS;
     if (v.year < minYear) throw new AppError(400, 'vehicle_too_old', `El vehículo debe ser del año ${minYear} o posterior`);
+    // Taxi: hasta 4 pasajeros. Furgoneta: de 5 a 15. El revisor confirma los asientos contra la matrícula.
+    const [min, max] = v.vehicleType === 'van' ? [5, 15] : [1, 4];
+    if (v.seats < min || v.seats > max) throw new AppError(400, 'invalid_seats', `Un${v.vehicleType === 'van' ? 'a furgoneta' : ' taxi'} debe tener entre ${min} y ${max} asientos para pasajeros`);
     const id = randomUUID();
     try {
       await this.pool.query(
-        'INSERT INTO drivers.vehicles (id, driver_id, plate, make, model, year, color, seats_passenger) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [id, userId, plate, v.make, v.model, v.year, v.color, v.seats],
+        'INSERT INTO drivers.vehicles (id, driver_id, plate, make, model, year, color, seats_passenger, vehicle_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+        [id, userId, plate, v.make, v.model, v.year, v.color, v.seats, v.vehicleType],
       );
     } catch (e) {
       if ((e as { code?: string }).code === '23505') throw new AppError(409, 'plate_in_use', 'Esa placa ya está registrada');
       throw e;
     }
-    await this.audit.record({ action: 'driver.vehicle_add', resourceType: 'vehicle', resourceId: id, metadata: { plate } }, req);
+    await this.audit.record({ action: 'driver.vehicle_add', resourceType: 'vehicle', resourceId: id, metadata: { plate, vehicleType: v.vehicleType, seats: v.seats } }, req);
     return { id, plate };
   }
 
@@ -186,8 +189,8 @@ export class DriversService {
   }
 
   async vehicles(userId: string) {
-    const { rows } = await this.pool.query<{ id: string; plate: string; make: string; model: string; year: number; color: string; seats_passenger: number; status: string }>(
-      'SELECT id, plate, make, model, year, color, seats_passenger, status FROM drivers.vehicles WHERE driver_id = $1 ORDER BY created_at',
+    const { rows } = await this.pool.query<{ id: string; plate: string; make: string; model: string; year: number; color: string; seats_passenger: number; vehicle_type: string; seats_verified: boolean; status: string }>(
+      'SELECT id, plate, make, model, year, color, seats_passenger, vehicle_type, seats_verified_at IS NOT NULL AS seats_verified, status FROM drivers.vehicles WHERE driver_id = $1 ORDER BY created_at',
       [userId],
     );
     return rows;
@@ -243,15 +246,27 @@ export class DriversService {
     return { url: await this.storage.createDownloadUrl(rows[0].storage_key, 60), expiresIn: 60 };
   }
 
-  async reviewDocument(adminId: string, driverId: string, documentId: string, decision: 'approved' | 'rejected', reason: string | undefined, req: AppRequest) {
+  async reviewDocument(adminId: string, driverId: string, documentId: string, decision: 'approved' | 'rejected', reason: string | undefined, req: AppRequest, confirmedSeats?: number) {
     if (adminId === driverId) throw new AppError(403, 'forbidden', 'No puedes revisar tu propia solicitud');
+    // Matrícula: al aprobarla, el revisor confirma los asientos que figuran en el documento.
+    const doc = (await this.pool.query<{ type: string; vehicle_id: string | null; seats: number | null }>(
+      `SELECT d.type, d.vehicle_id, v.seats_passenger AS seats FROM drivers.documents d LEFT JOIN drivers.vehicles v ON v.id = d.vehicle_id WHERE d.id = $1 AND d.driver_id = $2`,
+      [documentId, driverId],
+    )).rows[0];
+    if (doc?.type === 'registration' && decision === 'approved') {
+      if (confirmedSeats === undefined) throw new AppError(400, 'seats_confirmation_required', 'Confirma cuántos asientos para pasajeros indica la matrícula');
+      if (confirmedSeats !== doc.seats) throw new AppError(409, 'seats_mismatch', `La matrícula indica ${confirmedSeats} asientos y el conductor declaró ${doc.seats}: rechaza el documento o pide que corrija el vehículo`);
+    }
     const r = await this.pool.query(
       `UPDATE drivers.documents SET review_status = $3, reviewed_by = $4, reviewed_at = now(), rejection_reason = $5
        WHERE id = $1 AND driver_id = $2 AND upload_status = 'uploaded' AND scan_status = 'clean' AND superseded_at IS NULL`,
       [documentId, driverId, decision, adminId, decision === 'rejected' ? reason ?? 'sin motivo' : null],
     );
     if (!r.rowCount) throw new AppError(404, 'not_found', 'Documento no disponible para revisión');
-    await this.audit.record({ action: 'driver.document_review', resourceType: 'driver_document', resourceId: documentId, actorUserId: adminId, actorRole: 'driver_reviewer', metadata: { decision } }, req);
+    if (doc?.type === 'registration' && decision === 'approved') {
+      await this.pool.query('UPDATE drivers.vehicles SET seats_verified_by = $2, seats_verified_at = now() WHERE id = $1', [doc.vehicle_id, adminId]);
+    }
+    await this.audit.record({ action: 'driver.document_review', resourceType: 'driver_document', resourceId: documentId, actorUserId: adminId, actorRole: 'driver_reviewer', metadata: { decision, ...(confirmedSeats ? { confirmedSeats } : {}) } }, req);
     return { documentId, reviewStatus: decision };
   }
 
@@ -270,6 +285,7 @@ export class DriversService {
       if (decision === 'approve') {
         await c.query(
           `UPDATE drivers.vehicles v SET status = 'approved' WHERE driver_id = $1 AND status = 'pending' AND
+             v.seats_verified_at IS NOT NULL AND
              (SELECT count(*) FROM drivers.documents d WHERE d.vehicle_id = v.id AND d.review_status = 'approved' AND d.superseded_at IS NULL) >= 2`,
           [driverId],
         );

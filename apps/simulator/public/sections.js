@@ -75,7 +75,7 @@ export const SECTIONS = [
     note: 'Requisito previo: identidad verificada (módulo 2).',
     items: [
       { label: 'Enviar datos de licencia', action: 'driver.apply', fields: [{ name: 'licenseNumber', label: 'Nº de licencia', default: 'L0912345675' }, { name: 'licenseCategory', label: 'Categoría', type: 'select', options: ['C', 'C1', 'D', 'E', 'B'].map((c) => ({ value: c, label: c === 'B' ? 'B (no profesional: se rechaza)' : c })) }, { name: 'licenseExpiresOn', label: 'Vence', default: '2029-12-31' }] },
-      { label: 'Registrar vehículo', action: 'vehicle.add', fields: [{ name: 'plate', label: 'Placa', default: 'GSA-1234' }, { name: 'make', label: 'Marca', default: 'Chevrolet' }, { name: 'model', label: 'Modelo', default: 'Aveo' }, { name: 'year', label: 'Año', default: '2022' }, { name: 'color', label: 'Color', default: 'Amarillo' }, { name: 'seats', label: 'Asientos para pasajeros', default: '4' }] },
+      { label: 'Registrar vehículo', action: 'vehicle.add', fields: [{ name: 'plate', label: 'Placa', default: 'GSA-1234' }, { name: 'make', label: 'Marca', default: 'Chevrolet' }, { name: 'model', label: 'Modelo', default: 'Aveo' }, { name: 'year', label: 'Año', default: '2022' }, { name: 'color', label: 'Color', default: 'Amarillo' }, { name: 'seats', label: 'Asientos para pasajeros', default: '4' }, { name: 'vehicleType', label: 'Tipo', type: 'select', options: [{ value: 'taxi', label: 'Taxi (1–4 asientos)' }, { value: 'van', label: 'Furgoneta (5–15 asientos)' }] }] },
       {
         label: 'Subir documento',
         action: 'doc.upload',

@@ -49,7 +49,8 @@ export class DriverController {
         model: z.string().min(1).max(40).regex(/^[\p{L}\p{N} .-]+$/u),
         year: z.number().int().min(1980).max(new Date().getFullYear() + 1),
         color: z.string().min(3).max(30).regex(/^[\p{L} ]+$/u),
-        seats: z.number().int().min(1).max(8),
+        seats: z.number().int().min(1).max(15),
+        vehicleType: z.enum(['taxi', 'van']).default('taxi'),
       }),
       body,
     );
@@ -117,8 +118,8 @@ export class AdminDriversController {
   @HttpCode(200)
   @AdminWrite()
   review(@Req() req: AppRequest, @Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Param('docId', ParseUUIDPipe) docId: string, @Body() body: unknown) {
-    const { decision, reason } = parseInput(z.object({ decision: z.enum(['approved', 'rejected']), reason: z.string().max(300).optional() }), body);
-    return this.drivers.reviewDocument(auth.userId, id, docId, decision, reason, req);
+    const { decision, reason, confirmedSeats } = parseInput(z.object({ decision: z.enum(['approved', 'rejected']), reason: z.string().max(300).optional(), confirmedSeats: z.number().int().min(1).max(15).optional() }), body);
+    return this.drivers.reviewDocument(auth.userId, id, docId, decision, reason, req, confirmedSeats);
   }
 
   @Post(':id/decision')

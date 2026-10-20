@@ -3,6 +3,7 @@ import type { Redis } from 'ioredis';
 import { REDIS } from '@intitaxi/nest-common';
 import type { AppConfig } from '../../config.js';
 import { PAYMENT_GATEWAY } from '../../tokens.js';
+import { CommissionService } from './commission.service.js';
 import { FraudService } from './fraud.service.js';
 import { KushkiGateway, MockGateway } from './gateway.js';
 import { AdminPaymentsController, DevPaymentsController, PaymentsController, PaymentsWebhookController } from './payments.controller.js';
@@ -25,11 +26,12 @@ export class PaymentsModule {
               ? new KushkiGateway({ baseUrl: c.KUSHKI_BASE_URL, privateMerchantId: c.KUSHKI_PRIVATE_MERCHANT_ID!, webhookSecret: c.KUSHKI_WEBHOOK_SECRET! })
               : new MockGateway(r, Buffer.from(c.WEBHOOK_SECRET_PAYMENTS!, 'base64'), c.PUBLIC_BASE_URL),
         },
+        CommissionService,
         FraudService,
         PaymentsService,
         PayoutsService,
       ],
-      exports: [PaymentsService, PayoutsService, FraudService],
+      exports: [PaymentsService, PayoutsService, FraudService, CommissionService],
     };
   }
 }
