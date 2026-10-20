@@ -16,6 +16,8 @@ export interface DriverLocation extends LatLng {
  * Presencia en tiempo real de conductores (Redis GEO). Postgres guarda lo durable
  * (sesiones online, viajes); aquí solo lo efímero de alta frecuencia.
  */
+export type VehicleKind = 'taxi' | 'van' | 'tow' | 'rental';
+
 @Injectable()
 export class PresenceService {
   /** Lo registra el módulo de viajes para guardar la ruta y publicarla en tiempo real. */
@@ -23,7 +25,7 @@ export class PresenceService {
 
   constructor(@Inject(REDIS) private readonly redis: Redis) {}
 
-  async goOnline(driverId: string, info: { vehicleId: string; seats: number; sessionId: string; vehicleType?: 'taxi' | 'van' }, loc: DriverLocation) {
+  async goOnline(driverId: string, info: { vehicleId: string; seats: number; sessionId: string; vehicleType?: VehicleKind }, loc: DriverLocation) {
     await this.redis
       .multi()
       .hset(`driver:state:${driverId}`, { vehicleId: info.vehicleId, seats: String(info.seats), sessionId: info.sessionId, vehicleType: info.vehicleType ?? 'taxi' })
@@ -38,7 +40,7 @@ export class PresenceService {
 
   async state(driverId: string) {
     const s = await this.redis.hgetall(`driver:state:${driverId}`);
-    return s.sessionId ? { vehicleId: s.vehicleId!, seats: Number(s.seats), sessionId: s.sessionId, tripId: s.tripId || null, vehicleType: (s.vehicleType ?? 'taxi') as 'taxi' | 'van' } : null;
+    return s.sessionId ? { vehicleId: s.vehicleId!, seats: Number(s.seats), sessionId: s.sessionId, tripId: s.tripId || null, vehicleType: (s.vehicleType ?? 'taxi') as VehicleKind } : null;
   }
 
   async lastLocation(driverId: string): Promise<DriverLocation | null> {

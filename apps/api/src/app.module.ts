@@ -23,6 +23,7 @@ import { PeopleModule } from './modules/people/people.module.js';
 import { DevJobsController } from './modules/dev/dev-jobs.controller.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { ManifestModule, SosModule } from './modules/safety/safety.module.js';
+import { AssistModule } from './modules/assist/assist.module.js';
 import { TrustModule } from './modules/trust/trust.module.js';
 import { ChatModule } from './modules/chat/chat.module.js';
 import { BackofficeModule } from './modules/backoffice/backoffice.module.js';
@@ -80,7 +81,7 @@ export class AppModule {
 
     // El servicio SOS se despliega aparte (aislamiento de fallos y credenciales) y solo carga sus módulos.
     const devStorageSecret = randomBytes(32);
-    const domain = role === 'api' ? [ManifestModule.forRole('api'), KycModule.forConfig(config), DriversModule.forConfig(config), TripsModule.forConfig(config), NotificationsModule, PeopleModule, PaymentsModule.forConfig(config), FixedRoutesModule, BackofficeModule, ChatModule, TrustModule] : [ManifestModule.forRole('sos'), SosModule.forConfig(config)];
+    const domain = role === 'api' ? [ManifestModule.forRole('api'), KycModule.forConfig(config), DriversModule.forConfig(config), TripsModule.forConfig(config), NotificationsModule, PeopleModule, PaymentsModule.forConfig(config), FixedRoutesModule, BackofficeModule, ChatModule, TrustModule, AssistModule] : [ManifestModule.forRole('sos'), SosModule.forConfig(config)];
     return {
       module: AppModule,
       imports: [

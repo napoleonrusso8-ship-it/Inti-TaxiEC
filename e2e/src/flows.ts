@@ -51,11 +51,11 @@ export async function uploadDoc(d: SimDevice, type: string, opts: { vehicleId?: 
 }
 
 /** Conductor con solicitud completa enviada (pendiente de revisión). */
-export async function submittedDriver(s: Stack, seats = 4, vehicleType: 'taxi' | 'van' = 'taxi') {
+export async function submittedDriver(s: Stack, seats = 4, vehicleType: 'taxi' | 'van' | 'tow' | 'rental' = 'taxi', rentalCategory = 'auto') {
   const u = await verifiedUser(s, 'driver');
   const app = await u.d.call('api', 'POST', '/v1/driver/application', { licenseNumber: `L${u.doc}`, licenseCategory: 'C', licenseExpiresOn: '2029-12-31' });
   if (app.status !== 201) throw new Error(`apply ${app.status} ${JSON.stringify(app.body)}`);
-  const v = await u.d.call('api', 'POST', '/v1/driver/vehicles', { plate: randomPlate(), make: vehicleType === 'van' ? 'Hyundai' : 'Chevrolet', model: vehicleType === 'van' ? 'H1' : 'Aveo', year: 2022, color: vehicleType === 'van' ? 'Blanco' : 'Amarillo', seats, vehicleType });
+  const v = await u.d.call('api', 'POST', '/v1/driver/vehicles', { plate: randomPlate(), make: vehicleType === 'van' ? 'Hyundai' : 'Chevrolet', model: vehicleType === 'van' ? 'H1' : 'Aveo', year: 2022, color: vehicleType === 'van' ? 'Blanco' : 'Amarillo', seats, vehicleType, ...(vehicleType === 'rental' ? { rentalCategory } : {}) });
   if (v.status !== 201) throw new Error(`vehicle ${v.status} ${JSON.stringify(v.body)}`);
   for (const t of ['license', 'background_check']) await uploadDoc(u.d, t);
   for (const t of ['registration', 'insurance']) await uploadDoc(u.d, t, { vehicleId: v.body.id });
@@ -65,8 +65,8 @@ export async function submittedDriver(s: Stack, seats = 4, vehicleType: 'taxi' |
 }
 
 /** Conductor aprobado por un revisor (todos los documentos revisados). */
-export async function approvedDriver(s: Stack, reviewer?: SimDevice, seats = 4, vehicleType: 'taxi' | 'van' = 'taxi') {
-  const drv = await submittedDriver(s, seats, vehicleType);
+export async function approvedDriver(s: Stack, reviewer?: SimDevice, seats = 4, vehicleType: 'taxi' | 'van' | 'tow' | 'rental' = 'taxi', rentalCategory = 'auto') {
+  const drv = await submittedDriver(s, seats, vehicleType, rentalCategory);
   const admin = reviewer ?? (await adminSession(s, 'driver_reviewer')).web;
   const detail = await admin.call('api', 'GET', `/v1/admin/drivers/${drv.userId}`);
   for (const doc of detail.body.documents) {

@@ -82,7 +82,7 @@ export class DriversService {
     return p;
   }
 
-  async addVehicle(userId: string, v: { plate: string; make: string; model: string; year: number; color: string; seats: number; vehicleType: 'taxi' | 'van' }, req: AppRequest) {
+  async addVehicle(userId: string, v: { plate: string; make: string; model: string; year: number; color: string; seats: number; vehicleType: 'taxi' | 'van' | 'tow' | 'rental'; rentalCategory?: string }, req: AppRequest) {
     const profile = await this.requireProfile(userId);
     if (profile.status === 'suspended') throw new AppError(403, 'suspended', 'Cuenta suspendida');
     const plate = normalizePlate(v.plate);
@@ -90,13 +90,15 @@ export class DriversService {
     const minYear = new Date().getFullYear() - this.config.VEHICLE_MAX_AGE_YEARS;
     if (v.year < minYear) throw new AppError(400, 'vehicle_too_old', `El vehículo debe ser del año ${minYear} o posterior`);
     // Taxi: hasta 4 pasajeros. Furgoneta: de 5 a 15. El revisor confirma los asientos contra la matrícula.
-    const [min, max] = v.vehicleType === 'van' ? [5, 15] : [1, 4];
-    if (v.seats < min || v.seats > max) throw new AppError(400, 'invalid_seats', `Un${v.vehicleType === 'van' ? 'a furgoneta' : ' taxi'} debe tener entre ${min} y ${max} asientos para pasajeros`);
+    const RANGE = { taxi: [1, 4, 'Un taxi'], van: [5, 15, 'Una furgoneta'], tow: [1, 2, 'Una grúa'], rental: [1, 8, 'Un vehículo de alquiler'] } as const;
+    const [min, max, label] = RANGE[v.vehicleType];
+    if (v.seats < min || v.seats > max) throw new AppError(400, 'invalid_seats', `${label} debe tener entre ${min} y ${max} asientos para pasajeros`);
+    if ((v.vehicleType === 'rental') !== !!v.rentalCategory) throw new AppError(400, 'invalid_input', 'Indica la categoría solo para vehículos de alquiler');
     const id = randomUUID();
     try {
       await this.pool.query(
-        'INSERT INTO drivers.vehicles (id, driver_id, plate, make, model, year, color, seats_passenger, vehicle_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-        [id, userId, plate, v.make, v.model, v.year, v.color, v.seats, v.vehicleType],
+        'INSERT INTO drivers.vehicles (id, driver_id, plate, make, model, year, color, seats_passenger, vehicle_type, rental_category) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+        [id, userId, plate, v.make, v.model, v.year, v.color, v.seats, v.vehicleType, v.rentalCategory ?? null],
       );
     } catch (e) {
       if ((e as { code?: string }).code === '23505') throw new AppError(409, 'plate_in_use', 'Esa placa ya está registrada');

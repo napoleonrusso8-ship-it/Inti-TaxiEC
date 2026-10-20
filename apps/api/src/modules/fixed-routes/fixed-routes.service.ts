@@ -368,6 +368,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     if (st.tripId) throw new AppError(409, 'busy', 'Termina tu viaje o recorrido actual');
     const v = (await this.pool.query(`SELECT seats_passenger, vehicle_type FROM drivers.vehicles WHERE id = $1 AND driver_id = $2 AND status = 'approved'`, [vehicleId, driverId])).rows[0];
     if (!v) throw new AppError(404, 'not_found', 'Vehículo no encontrado o no aprobado');
+    if (v.vehicle_type !== 'taxi' && v.vehicle_type !== 'van') throw new AppError(409, 'invalid_vehicle', 'Taxi Ruta es solo para taxis y furgonetas');
     if (!(await this.rules(routeId, this.pool, v.vehicle_type)).length) throw new AppError(409, 'no_fare', `Esta ruta no tiene tarifas para ${VEHICLE_LABEL[v.vehicle_type as VehicleType].toLowerCase()}`);
     const id = randomUUID();
     await this.pool.query(`INSERT INTO fixed_routes.instances (id, direction_id, driver_id, vehicle_id, status, seats_total, vehicle_type) VALUES ($1, $2, $3, $4, 'in_service', $5, $6)`, [id, dir.id, driverId, vehicleId, v.seats_passenger, v.vehicle_type])

@@ -9,7 +9,7 @@ import { DriversService } from '../drivers/drivers.service.js';
 import { KycService } from '../kyc/kyc.service.js';
 import { FraudService } from '../payments/fraud.service.js';
 import { MatchingService } from './matching.service.js';
-import { PresenceService } from './presence.service.js';
+import { PresenceService, type VehicleKind } from './presence.service.js';
 import { TripsService } from './trips.service.js';
 
 const point = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
@@ -120,8 +120,9 @@ export class DriverTripsController {
     const issues = await this.drivers.eligibility(auth.userId);
     if (issues.length) throw new AppError(403, 'not_eligible', `No puedes conectarte: ${issues.join(', ')}`);
     await this.kyc.assertDriverIdentityFresh(auth.userId);
-    const v = await this.pool.query<{ seats_passenger: number; vehicle_type: 'taxi' | 'van' }>(`SELECT seats_passenger, vehicle_type FROM drivers.vehicles WHERE id = $1 AND driver_id = $2 AND status = 'approved'`, [i.vehicleId, auth.userId]);
+    const v = await this.pool.query<{ seats_passenger: number; vehicle_type: VehicleKind }>(`SELECT seats_passenger, vehicle_type FROM drivers.vehicles WHERE id = $1 AND driver_id = $2 AND status = 'approved'`, [i.vehicleId, auth.userId]);
     if (!v.rows[0]) throw new AppError(404, 'not_found', 'Vehículo no encontrado o no aprobado');
+    if (v.rows[0].vehicle_type === 'rental') throw new AppError(409, 'not_drivable_service', 'Los vehículos de alquiler no se conectan: recibes las solicitudes en la sección Alquiler');
     await this.pool.query('UPDATE drivers.online_sessions SET ended_at = now() WHERE driver_id = $1 AND ended_at IS NULL', [auth.userId]);
     const sessionId = randomUUID();
     await this.pool.query('INSERT INTO drivers.online_sessions (id, driver_id, vehicle_id, device_id) VALUES ($1, $2, $3, $4)', [sessionId, auth.userId, i.vehicleId, device.deviceId]);

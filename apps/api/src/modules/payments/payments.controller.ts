@@ -142,7 +142,7 @@ export class AdminPaymentsController {
   @AdminWrite()
   updateCommissions(@Req() req: AppRequest, @Auth() auth: AuthContext, @Body() body: unknown) {
     const i = parseInput(
-      z.object({ on_demand_bps: z.number().int().min(0).optional(), route_fee_taxi_cents: z.number().int().min(0).optional(), route_fee_van_cents: z.number().int().min(0).optional() }).strict(),
+      z.object({ on_demand_bps: z.number().int().min(0).optional(), route_fee_taxi_cents: z.number().int().min(0).optional(), route_fee_van_cents: z.number().int().min(0).optional(), assist_bps: z.number().int().min(0).optional() }).strict(),
       body,
     );
     return this.commissions.update(auth.userId, i, req);

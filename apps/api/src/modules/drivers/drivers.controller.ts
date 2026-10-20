@@ -50,7 +50,8 @@ export class DriverController {
         year: z.number().int().min(1980).max(new Date().getFullYear() + 1),
         color: z.string().min(3).max(30).regex(/^[\p{L} ]+$/u),
         seats: z.number().int().min(1).max(15),
-        vehicleType: z.enum(['taxi', 'van']).default('taxi'),
+        vehicleType: z.enum(['taxi', 'van', 'tow', 'rental']).default('taxi'),
+        rentalCategory: z.enum(['auto', 'suv', 'camioneta', 'furgoneta']).optional(),
       }),
       body,
     );

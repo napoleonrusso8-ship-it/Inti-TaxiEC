@@ -7,3 +7,4 @@ export * from './identity-docs.js';
 export * from './fixed-route.js';
 export * from './surge.js';
 export * from './rating-tags.js';
+export * from './assist.js';

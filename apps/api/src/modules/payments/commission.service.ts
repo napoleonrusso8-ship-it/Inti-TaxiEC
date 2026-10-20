@@ -3,11 +3,11 @@ import type { Pool, PoolClient } from '@intitaxi/db';
 import { AppError, AuditService, type AppRequest } from '@intitaxi/nest-common';
 import { PG_POOL } from '../../tokens.js';
 
-export type CommissionKey = 'on_demand_bps' | 'route_fee_taxi_cents' | 'route_fee_van_cents';
+export type CommissionKey = 'on_demand_bps' | 'route_fee_taxi_cents' | 'route_fee_van_cents' | 'assist_bps';
 export type CommissionSettings = Record<CommissionKey, number>;
 
 /** Límites de seguridad: un error de captura en el panel no puede dejar a los conductores sin ingresos. */
-const MAX: CommissionSettings = { on_demand_bps: 3000, route_fee_taxi_cents: 1000, route_fee_van_cents: 2000 };
+const MAX: CommissionSettings = { on_demand_bps: 3000, route_fee_taxi_cents: 1000, route_fee_van_cents: 2000, assist_bps: 3000 };
 
 /**
  * Comisiones de la plataforma (decisión del propietario):
@@ -34,6 +34,11 @@ export class CommissionService {
   /** Comisión de un viaje bajo demanda: solo sobre la parte base (sin recargo). */
   async onDemand(baseCents: number): Promise<number> {
     return Math.round((baseCents * (await this.settings()).on_demand_bps) / 10_000);
+  }
+
+  /** Grúas y alquiler: % del precio aceptado. */
+  async assist(priceCents: number, c?: PoolClient): Promise<number> {
+    return Math.round((priceCents * (await this.settings(c)).assist_bps) / 10_000);
   }
 
   async routeFee(vehicleType: 'taxi' | 'van', c?: PoolClient): Promise<number> {
