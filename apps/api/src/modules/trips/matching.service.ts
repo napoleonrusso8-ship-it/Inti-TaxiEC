@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { withTransaction, type Pool } from '@intitaxi/db';
+import { withTransaction, type Pool, type PoolClient } from '@intitaxi/db';
 import { AppError, AuditService, type AppRequest } from '@intitaxi/nest-common';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../../config.js';
@@ -59,6 +59,7 @@ export class MatchingService implements OnModuleInit, OnModuleDestroy {
         const st = await this.presence.state(cand.driverId);
         // Solo los taxis reciben viajes bajo demanda (furgonetas: Taxi Ruta; grúas: asistencia).
         if (!st || st.tripId || st.vehicleType !== 'taxi' || st.seats < trip.party_size) continue;
+        if (!(await this.#meetsRequirements(c, cand.driverId, st.vehicleId, trip))) continue;
         const offerId = randomUUID();
         await c.query(
           `INSERT INTO trips.offers (id, trip_id, driver_id, status, distance_m, expires_at) VALUES ($1, $2, $3, 'pending', $4, now() + make_interval(secs => $5))`,
@@ -84,6 +85,24 @@ export class MatchingService implements OnModuleInit, OnModuleDestroy {
     return result.kind;
   }
 
+  /** Modo Ella, Conductor Aliado y equipamiento requerido (mascota, silla de ruedas). */
+  async #meetsRequirements(c: PoolClient, driverId: string, vehicleId: string, trip: MatchingTrip) {
+    const t = trip as MatchingTrip & { women_only?: boolean; ally_only?: boolean; prefs?: { pet?: boolean; wheelchair?: boolean } };
+    if (!t.women_only && !t.ally_only && !t.prefs?.pet && !t.prefs?.wheelchair) return true;
+    const { rows } = await c.query<{ women: boolean; ally: boolean; features: string[] }>(
+      `SELECT p.women_rides_approved_at IS NOT NULL AS women, p.ally_certified_at IS NOT NULL AS ally, v.features
+       FROM drivers.profiles p JOIN drivers.vehicles v ON v.driver_id = p.user_id WHERE p.user_id = $1 AND v.id = $2`,
+      [driverId, vehicleId],
+    );
+    const d = rows[0];
+    if (!d) return false;
+    if (t.women_only && !d.women) return false;
+    if (t.ally_only && !d.ally) return false;
+    if (t.prefs?.pet && !d.features.includes('pet_friendly')) return false;
+    if (t.prefs?.wheelchair && !d.features.includes('wheelchair')) return false;
+    return true;
+  }
+
   /** Vence ofertas sin respuesta y reintenta los viajes en búsqueda. Seguro con varias instancias (SKIP LOCKED). */
   async sweep() {
     const expired = await this.pool.query<{ trip_id: string }>(
@@ -100,7 +119,7 @@ export class MatchingService implements OnModuleInit, OnModuleDestroy {
     const { rows } = await this.pool.query(
       `SELECT o.id AS "offerId", o.trip_id AS "tripId", o.expires_at AS "expiresAt", o.distance_m AS "pickupDistanceM",
               t.origin_lat AS "originLat", t.origin_lng AS "originLng", t.dest_lat AS "destLat", t.dest_lng AS "destLng",
-              t.quoted_fare_cents AS "fareCents", t.surge_cents AS "surgeCents", t.distance_m AS "tripDistanceM", t.party_size AS "partySize", t.payment_method AS "paymentMethod",
+              t.quoted_fare_cents AS "fareCents", t.surge_cents AS "surgeCents", t.prefs, t.women_only AS "womenOnly", t.ally_only AS "allyOnly", t.distance_m AS "tripDistanceM", t.party_size AS "partySize", t.payment_method AS "paymentMethod",
               -- Reputación del pasajero visible antes de aceptar.
               (SELECT round(avg(stars), 1)::float8 FROM trips.ratings r WHERE r.ratee_user_id = t.requester_user_id) AS "passengerRating",
               (SELECT count(*)::int FROM trips.trips x WHERE x.requester_user_id = t.requester_user_id AND x.status = 'completed') AS "passengerTrips"

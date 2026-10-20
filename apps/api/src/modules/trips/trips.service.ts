@@ -156,6 +156,11 @@ export class TripsService {
       throw new AppError(403, 'payment_method_not_allowed', 'En este dispositivo solo está disponible el pago en efectivo');
     }
     await this.sanctions.assertAllowed(userId, 'passenger');
+    // Modo Ella: disponible para quien se identifica como mujer en su perfil (autodeclaración, sin verificación).
+    if (input.womenOnly) {
+      const prof = await this.pool.query(`SELECT self_identifies_woman FROM people.passenger_profiles WHERE user_id = $1`, [userId]);
+      if (!prof.rows[0]?.self_identifies_woman) throw new AppError(403, 'women_only_not_enabled', 'Activa Modo Ella en tu perfil para pedir solo conductoras');
+    }
     const quote = await this.once.take<Quote>(`quote:${input.quoteId}`);
     if (!quote || quote.userId !== userId) throw new AppError(409, 'quote_expired', 'La cotización venció; vuelve a cotizar');
 
@@ -180,6 +185,7 @@ export class TripsService {
         if (r?.partySize) await c.query('UPDATE trips.trips SET party_size = $2 WHERE id = $1', [id, r.partySize]);
         if (r?.isForThirdParty) await c.query('UPDATE trips.trips SET is_for_third_party = true WHERE id = $1', [id]);
       }
+      await c.query('UPDATE trips.trips SET prefs = $2, women_only = $3, ally_only = $4 WHERE id = $1', [id, input.prefs ?? {}, input.womenOnly === true, input.allyOnly === true]);
       await c.query(`INSERT INTO trips.trip_events (trip_id, event, actor_role, actor_id) VALUES ($1, 'requested', 'requester', $2)`, [id, userId]);
       await this.audit.record({ action: 'trip.request', resourceType: 'trip', resourceId: id, metadata: { payment: input.paymentMethod } }, req, c);
     });
@@ -225,6 +231,7 @@ export class TripsService {
       driver,
       // El conductor ve la reputación del pasajero (nombre de pila, calificación, viajes, etiquetas positivas).
       ...(role === 'driver' ? { passenger: await this.passengerCard(t.requester_user_id) } : {}),
+      prefs: (t as TripRow & { prefs?: Record<string, boolean> }).prefs ?? {},
       reassignments: { used: (t as TripRow & { reassign_count?: number }).reassign_count ?? 0, max: MAX_REASSIGN },
       driverLocation: loc ? { lat: loc.lat, lng: loc.lng, at: loc.at } : null,
       times: { requestedAt: t.requested_at, acceptedAt: t.accepted_at, arrivedAt: t.arrived_at, startedAt: t.started_at, endedAt: t.ended_at },
@@ -248,7 +255,13 @@ export class TripsService {
       rating: r.avg ? Math.round(Number(r.avg) * 10) / 10 : null,
       ratingsCount: Number(r.n),
       ...rep,
+      badges: await this.#driverBadges(driverId),
     };
+  }
+
+  async #driverBadges(driverId: string) {
+    const p = (await this.pool.query(`SELECT ally_certified_at, women_rides_approved_at FROM drivers.profiles WHERE user_id = $1`, [driverId])).rows[0];
+    return { ally: !!p?.ally_certified_at, womenRides: !!p?.women_rides_approved_at };
   }
 
   /** Lo que el conductor ve del pasajero: nombre de pila, calificación, viajes y etiquetas positivas. */
@@ -259,8 +272,12 @@ export class TripsService {
     );
     const given = k.rows[0]?.given_names_enc ? await this.cipher.decrypt(k.rows[0].given_names_enc, `kyc.verifications.given_names:${k.rows[0].id}`) : null;
     const r = (await this.pool.query<{ avg: string | null; n: string }>('SELECT avg(stars) AS avg, count(*) AS n FROM trips.ratings WHERE ratee_user_id = $1', [userId])).rows[0]!;
+    // Nombre de preferencia (nombre social): si la persona lo definió, es el único que ve el conductor.
+    const prof = (await this.pool.query<{ chosen_name_enc: Buffer | null }>(`SELECT chosen_name_enc FROM people.passenger_profiles WHERE user_id = $1`, [userId])).rows[0];
+    const chosen = prof?.chosen_name_enc ? await this.cipher.decrypt(prof.chosen_name_enc, `people.passenger_profiles.chosen_name:${userId}`) : null;
     return {
-      firstName: given?.split(' ')[0] ?? 'Pasajero',
+      firstName: chosen ?? given?.split(' ')[0] ?? 'Pasajero',
+      usesChosenName: !!chosen,
       identityVerified: !!k.rows[0],
       rating: r.avg ? Math.round(Number(r.avg) * 10) / 10 : null,
       ratingsCount: Number(r.n),
@@ -428,6 +445,7 @@ export class TripsService {
       throw e.code === '23505' ? new AppError(409, 'already_rated', 'Ya calificaste este viaje') : e;
     });
     await this.audit.record({ action: 'trip.rate', resourceType: 'trip', resourceId: tripId, metadata: { stars, tags: tags.join(',') } }, req);
+    this.events.emit('trip.rated', { tripId, rateeId: ratee, raterRole: role, stars });
     return { tripId, stars };
   }
 

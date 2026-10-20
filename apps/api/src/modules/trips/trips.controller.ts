@@ -12,6 +12,13 @@ import { MatchingService } from './matching.service.js';
 import { PresenceService, type VehicleKind } from './presence.service.js';
 import { TripsService } from './trips.service.js';
 
+export const TripPrefs = z.object({
+  quiet: z.boolean().optional(),
+  ac: z.boolean().optional(),
+  luggage: z.boolean().optional(),
+  pet: z.boolean().optional(),
+  wheelchair: z.boolean().optional(),
+}).strict();
 const point = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
 const label = z.string().max(160).regex(/^[^<>]*$/).optional();
 const idempotencyKey = (req: AppRequest) => {
@@ -41,7 +48,15 @@ export class TripsController {
   request(@Req() req: AppRequest, @Auth() auth: AuthContext, @Device() device: AttestedDevice, @Body() body: unknown) {
     requireClient(auth, 'intitaxi-passenger');
     const i = parseInput(
-      z.object({ quoteId: z.string().max(64), paymentMethod: z.enum(['cash', 'card', 'wallet']), paymentMethodId: z.string().uuid().optional() }).passthrough(),
+      z.object({
+        quoteId: z.string().max(64),
+        paymentMethod: z.enum(['cash', 'card', 'wallet']),
+        paymentMethodId: z.string().uuid().optional(),
+        // Preferencias del viaje (el conductor las ve antes de aceptar) y filtros de conductor.
+        prefs: TripPrefs.default({}),
+        womenOnly: z.boolean().default(false),
+        allyOnly: z.boolean().default(false),
+      }).passthrough(),
       body,
     );
     return this.trips.request(auth.userId, device, { ...i, idempotencyKey: idempotencyKey(req) }, req);

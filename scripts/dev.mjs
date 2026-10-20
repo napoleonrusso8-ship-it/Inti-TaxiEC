@@ -84,7 +84,7 @@ run('pnpm', ['build']);
 console.log('· Migrando la base de datos…');
 run('node', ['packages/db/dist/cli.js']);
 
-const apiEnv = { TRACKING_BASE_URL: 'http://localhost:3004', SUBJECT_PORTAL_URL: 'http://localhost:3002', INTERNAL_AUTH_URL: 'http://localhost:3001', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks', DEV_TOOLS: 'true', KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', ECU911_ADAPTER: 'mock', ECU911_AUTO_ESCALATE_SECONDS: '60' };
+const apiEnv = { SOS_INTERNAL_URL: 'http://localhost:3003', TRACKING_BASE_URL: 'http://localhost:3004', SUBJECT_PORTAL_URL: 'http://localhost:3002', INTERNAL_AUTH_URL: 'http://localhost:3001', AUTH_ISSUER: 'http://localhost:3001', AUTH_JWKS_URL: 'http://localhost:3001/jwks', DEV_TOOLS: 'true', KYC_PROVIDER: 'mock', PAYMENT_GATEWAY: 'mock', ECU911_ADAPTER: 'mock', ECU911_AUTO_ESCALATE_SECONDS: '60' };
 // El panel web (4100) llama a auth/api/sos desde el navegador: CORS solo para ese origen.
 const panel = { CORS_ORIGINS: 'http://localhost:4100' };
 const SERVICES = [

@@ -51,6 +51,14 @@ const schema = z
     SURGE_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
     SURGE_MAX: z.coerce.number().min(1).max(2).default(1.5),
     /** Compensación (la paga la plataforma) al conductor que ya había llegado cuando el pasajero pide otra unidad. */
+    /** Alerta de desvío / parada larga. */
+    SAFETY_CHECK_RESPONSE_SECONDS: z.coerce.number().int().min(10).max(600).default(90),
+    DEVIATION_THRESHOLD_M: z.coerce.number().int().min(100).max(10_000).default(1500),
+    DEVIATION_MIN_TRIP_SECONDS: z.coerce.number().int().min(0).max(1800).default(60),
+    LONG_STOP_SECONDS: z.coerce.number().int().min(5).max(3600).default(300),
+    SAFETY_SWEEP_MS: z.coerce.number().int().min(250).max(60_000).default(5000),
+    /** Servicio SOS (aislado): la API le pide abrir incidentes por llamada interna firmada. */
+    SOS_INTERNAL_URL: z.string().url().default('http://localhost:3003'),
     REASSIGN_ARRIVED_COMPENSATION_CENTS: z.coerce.number().int().min(0).max(500).default(100),
 
     MATCHING_OFFER_TTL_SECONDS: z.coerce.number().int().min(5).max(60).default(15),

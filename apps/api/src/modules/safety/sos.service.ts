@@ -11,7 +11,10 @@ import { CONFIG, ECU911, FIELD_CIPHER, PG_POOL, STORAGE } from '../../tokens.js'
 import type { Ecu911Port } from './ecu911.js';
 import { ManifestService } from './manifest.service.js';
 
-type Actor = { kind: 'user'; userId: string; role: 'requester' | 'passenger' | 'driver' } | { kind: 'link'; tripId: string } | { kind: 'operator'; userId: string };
+type Actor = { kind: 'user'; userId: string; role: 'requester' | 'passenger' | 'driver' } | { kind: 'link'; tripId: string } | { kind: 'operator'; userId: string } | { kind: 'system'; reason: string };
+
+const actorRole = (a: Actor) => (a.kind === 'user' ? a.role : a.kind === 'link' ? 'link_holder' : a.kind === 'system' ? 'system' : 'operator');
+const actorId = (a: Actor) => (a.kind === 'user' || a.kind === 'operator' ? a.userId : null);
 interface Loc {
   lat: number;
   lng: number;
@@ -65,7 +68,7 @@ export class SosService implements OnModuleInit, OnModuleDestroy {
 
   async #event(incidentId: string, kind: string, actor: Actor, data: Record<string, unknown> = {}) {
     await this.pool.query('INSERT INTO safety.sos_events (incident_id, kind, actor_role, actor_id, data) VALUES ($1, $2, $3, $4, $5)', [
-      incidentId, kind, actor.kind === 'user' ? actor.role : actor.kind === 'link' ? 'link_holder' : 'operator', actor.kind === 'link' ? null : actor.userId, data,
+      incidentId, kind, actorRole(actor), actorId(actor), data,
     ]);
   }
 
@@ -102,16 +105,16 @@ export class SosService implements OnModuleInit, OnModuleDestroy {
     let incidentId: string = existing?.id;
     if (!incidentId) {
       incidentId = randomUUID();
-      const role = actor.kind === 'user' ? actor.role : actor.kind === 'link' ? 'link_holder' : 'operator';
+      const role = actorRole(actor);
       try {
         await withTransaction(this.pool, async (c) => {
           await c.query(
             `INSERT INTO safety.incidents (id, trip_id, type, status, opened_by_user_id, opened_by_role) VALUES ($1, $2, $3, 'open', $4, $5)`,
-            [incidentId, tripId, type, actor.kind === 'link' ? null : actor.userId, role],
+            [incidentId, tripId, type, actorId(actor), role],
           );
           // Retención legal: los datos del viaje no se borran mientras haya incidente.
           await c.query('UPDATE trips.trips SET incident_hold = true WHERE id = $1', [tripId]);
-          await this.audit.record({ action: `incident.${type}`, resourceType: 'trip', resourceId: tripId, actorUserId: actor.kind === 'link' ? null : actor.userId, actorRole: role, metadata: { incidentId } }, req, c);
+          await this.audit.record({ action: `incident.${type}`, resourceType: 'trip', resourceId: tripId, actorUserId: actorId(actor), actorRole: role, metadata: { incidentId, ...(actor.kind === 'system' ? { reason: actor.reason } : {}) } }, req, c);
         });
       } catch (e) {
         if ((e as { code?: string }).code !== '23505') throw e;

@@ -6,6 +6,7 @@ import { ECU911 } from '../../tokens.js';
 import { AgreementEcu911Adapter, MockEcu911Adapter, SignedLinkEcu911Adapter } from './ecu911.js';
 import { ManifestLifecycle, ManifestService } from './manifest.service.js';
 import { AdminSafetyController, AuthorityController, DevEcu911Controller, SosController } from './safety.controller.js';
+import { InternalSafetyController } from './internal-safety.controller.js';
 import { SosService } from './sos.service.js';
 
 /** Manifiesto: en el servicio api (versiones al iniciar/terminar) y en el servicio sos (incidentes). */
@@ -27,7 +28,7 @@ export class SosModule {
   static forConfig(c: AppConfig): DynamicModule {
     return {
       module: SosModule,
-      controllers: [SosController, AdminSafetyController, AuthorityController, ...(c.DEV_TOOLS ? [DevEcu911Controller] : [])],
+      controllers: [SosController, AdminSafetyController, AuthorityController, InternalSafetyController, ...(c.DEV_TOOLS ? [DevEcu911Controller] : [])],
       providers: [
         {
           provide: ECU911,

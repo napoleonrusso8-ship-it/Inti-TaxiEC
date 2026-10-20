@@ -7,6 +7,8 @@ import {
   AuditService,
   DpopProofGuard,
   InfraModule,
+  INTERNAL_SECRET,
+  InternalAuthGuard,
   ProblemFilter,
   RecentMfaGuard,
   RedisDpopReplayStore,
@@ -23,6 +25,7 @@ import { PeopleModule } from './modules/people/people.module.js';
 import { DevJobsController } from './modules/dev/dev-jobs.controller.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { ManifestModule, SosModule } from './modules/safety/safety.module.js';
+import { CommunityModule } from './modules/community/community.module.js';
 import { AssistModule } from './modules/assist/assist.module.js';
 import { TrustModule } from './modules/trust/trust.module.js';
 import { ChatModule } from './modules/chat/chat.module.js';
@@ -65,6 +68,8 @@ export class AppModule {
         AttestationGuard,
         RecentMfaGuard,
         AdminGuard,
+        { provide: INTERNAL_SECRET, useValue: Buffer.from(config.INTERNAL_SIGNING_SECRET, 'base64') },
+        InternalAuthGuard,
         {
           provide: STORAGE,
           useFactory: () =>
@@ -75,13 +80,13 @@ export class AppModule {
         // En el servicio sos no hay módulo de viajes: el ciclo de vida del manifiesto solo corre en api.
         { provide: 'TRIP_EVENTS_OPTIONAL', useFactory: (e?: TripEvents) => e ?? null, inject: [{ token: TripEvents, optional: true }] },
       ],
-      exports: [CONFIG, AccessTokenVerifier, AuditService, AccessTokenGuard, DpopProofGuard, AttestationGuard, RecentMfaGuard, AdminGuard, STORAGE, 'TRIP_EVENTS_OPTIONAL'],
+      exports: [CONFIG, AccessTokenVerifier, AuditService, AccessTokenGuard, DpopProofGuard, AttestationGuard, RecentMfaGuard, AdminGuard, INTERNAL_SECRET, InternalAuthGuard, STORAGE, 'TRIP_EVENTS_OPTIONAL'],
     })
     class CoreModule {}
 
     // El servicio SOS se despliega aparte (aislamiento de fallos y credenciales) y solo carga sus módulos.
     const devStorageSecret = randomBytes(32);
-    const domain = role === 'api' ? [ManifestModule.forRole('api'), KycModule.forConfig(config), DriversModule.forConfig(config), TripsModule.forConfig(config), NotificationsModule, PeopleModule, PaymentsModule.forConfig(config), FixedRoutesModule, BackofficeModule, ChatModule, TrustModule, AssistModule] : [ManifestModule.forRole('sos'), SosModule.forConfig(config)];
+    const domain = role === 'api' ? [ManifestModule.forRole('api'), KycModule.forConfig(config), DriversModule.forConfig(config), TripsModule.forConfig(config), NotificationsModule, PeopleModule, PaymentsModule.forConfig(config), FixedRoutesModule, BackofficeModule, ChatModule, TrustModule, AssistModule, CommunityModule] : [ManifestModule.forRole('sos'), SosModule.forConfig(config)];
     return {
       module: AppModule,
       imports: [
