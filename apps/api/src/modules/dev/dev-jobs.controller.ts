@@ -1,5 +1,6 @@
 import { Controller, HttpCode, Inject, Post } from '@nestjs/common';
 import { KycService } from '../kyc/kyc.service.js';
+import { ChatService } from '../chat/chat.service.js';
 import { MatchingService } from '../trips/matching.service.js';
 import { PeopleService } from '../people/people.service.js';
 
@@ -10,12 +11,13 @@ export class DevJobsController {
     @Inject(PeopleService) private readonly people: PeopleService,
     @Inject(KycService) private readonly kyc: KycService,
     @Inject(MatchingService) private readonly matching: MatchingService,
+    @Inject(ChatService) private readonly chat: ChatService,
   ) {}
 
   @Post('retention/run')
   @HttpCode(200)
   async retention() {
-    return { anonymizedPeople: await this.people.purgeExpired(), kycProviderDeletions: await this.kyc.purgeProviderData() };
+    return { anonymizedPeople: await this.people.purgeExpired(), kycProviderDeletions: await this.kyc.purgeProviderData(), chatMediaDeleted: await this.chat.purgeExpired() };
   }
 
   @Post('matching/sweep')

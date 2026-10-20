@@ -117,6 +117,8 @@ export class SosService implements OnModuleInit, OnModuleDestroy {
         if ((e as { code?: string }).code !== '23505') throw e;
         incidentId = (await this.pool.query(`SELECT id FROM safety.incidents WHERE trip_id = $1 AND status = ANY($2)`, [tripId, ACTIVE])).rows[0].id;
       }
+      // El chat del viaje (texto y archivos) se conserva como prueba mientras dure el incidente.
+      await this.redis.persist(`rt:chat:${tripId}`);
       await this.#event(incidentId, 'activated', actor, { type, location });
       await this.manifests.snapshot(tripId, 'incident');
       await this.#alertContacts(incidentId, trip, actor);

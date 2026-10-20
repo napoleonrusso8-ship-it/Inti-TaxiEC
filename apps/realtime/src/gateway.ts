@@ -161,8 +161,8 @@ export class Gateway {
     if ((await this.redis.multi().incr(k).expire(k, 120).exec())?.[0]?.[1] as number > 20) return this.#send(c, { type: 'error', code: 'rate_limited' });
     const role = (await this.redis.hget(`rt:trip:${tripId}:roles`, c.auth!.userId)) ?? 'passenger';
     const msg = { type: 'chat', tripId, from: role, text: redactPii(text), at: new Date().toISOString() };
-    // Se conserva 7 días para atender reclamos e incidentes.
-    await this.redis.multi().lpush(`rt:chat:${tripId}`, JSON.stringify(msg)).ltrim(`rt:chat:${tripId}`, 0, 199).expire(`rt:chat:${tripId}`, 7 * 86400).exec();
+    // Se conserva 30 días para atender reclamos e incidentes (más si hay un reporte o SOS).
+    await this.redis.multi().lpush(`rt:chat:${tripId}`, JSON.stringify(msg)).ltrim(`rt:chat:${tripId}`, 0, 199).expire(`rt:chat:${tripId}`, 30 * 86400).exec();
     await this.redis.publish(`rt:trip:${tripId}`, JSON.stringify(msg));
   }
 
