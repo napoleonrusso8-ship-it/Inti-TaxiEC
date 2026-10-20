@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { constantTimeEqual, randomToken, type FieldCipher } from '@intitaxi/crypto';
 import { withTransaction, type Pool, type PoolClient } from '@intitaxi/db';
-import { canTransition, fareBreakdown, GUAYAQUIL_BBOX, inBBox, isValidLatLng, onDemandFareCents, surgeMultiplier, type LatLng, type TripStatus } from '@intitaxi/domain';
+import { allowedTags, canTransition, fareBreakdown, isPositiveTag, TAG_LABEL, GUAYAQUIL_BBOX, inBBox, isValidLatLng, onDemandFareCents, surgeMultiplier, type LatLng, type TripStatus } from '@intitaxi/domain';
 import { AppError, AuditService, internalFetch, OneTimeStore, RateLimiter, REDIS, tooManyRequests, type AppRequest, type AttestedDevice } from '@intitaxi/nest-common';
 import type { Redis } from 'ioredis';
 import { randomInt, randomUUID } from 'node:crypto';
@@ -9,6 +9,7 @@ import type { AppConfig } from '../../config.js';
 import type { MapsPort } from '../../infra/maps.js';
 import { CONFIG, FIELD_CIPHER, MAPS, PG_POOL } from '../../tokens.js';
 import { CommissionService } from '../payments/commission.service.js';
+import { postLedger } from '../payments/ledger.js';
 import { MatchingService } from './matching.service.js';
 import { PresenceService } from './presence.service.js';
 import { TripEvents } from './trip-events.js';
@@ -69,6 +70,7 @@ export const tripAad = {
   pin: (id: string) => `trips.trips.pin:${id}`,
 };
 const MAX_PIN_ATTEMPTS = 3;
+const MAX_REASSIGN = 5;
 
 /** Hooks que otros módulos registran (acompañantes, pagos…) sin acoplar el núcleo de viajes. */
 export interface TripRequestHooks {
@@ -218,6 +220,9 @@ export class TripsService {
       partySize: t.party_size,
       paymentMethod: t.payment_method,
       driver,
+      // El conductor ve la reputación del pasajero (nombre de pila, calificación, viajes, etiquetas positivas).
+      ...(role === 'driver' ? { passenger: await this.passengerCard(t.requester_user_id) } : {}),
+      reassignments: { used: (t as TripRow & { reassign_count?: number }).reassign_count ?? 0, max: MAX_REASSIGN },
       driverLocation: loc ? { lat: loc.lat, lng: loc.lng, at: loc.at } : null,
       times: { requestedAt: t.requested_at, acceptedAt: t.accepted_at, arrivedAt: t.arrived_at, startedAt: t.started_at, endedAt: t.ended_at },
     };
@@ -232,13 +237,55 @@ export class TripsService {
       [driverId],
     );
     const given = k.rows[0]?.given_names_enc ? await this.cipher.decrypt(k.rows[0].given_names_enc, `kyc.verifications.given_names:${k.rows[0].id}`) : null;
+    const rep = await this.#reputation(driverId, 'driver');
     return {
       firstName: given?.split(' ')[0] ?? 'Conductor',
       identityVerified: !!k.rows[0],
       vehicle: v ? { plate: v.plate, make: v.make, model: v.model, color: v.color } : null,
       rating: r.avg ? Math.round(Number(r.avg) * 10) / 10 : null,
       ratingsCount: Number(r.n),
+      ...rep,
     };
+  }
+
+  /** Lo que el conductor ve del pasajero: nombre de pila, calificación, viajes y etiquetas positivas. */
+  async passengerCard(userId: string) {
+    const k = await this.pool.query<{ id: string; given_names_enc: Buffer | null }>(
+      `SELECT id, given_names_enc FROM kyc.verifications WHERE user_id = $1 AND kind = 'full' AND status = 'approved' ORDER BY decided_at DESC LIMIT 1`,
+      [userId],
+    );
+    const given = k.rows[0]?.given_names_enc ? await this.cipher.decrypt(k.rows[0].given_names_enc, `kyc.verifications.given_names:${k.rows[0].id}`) : null;
+    const r = (await this.pool.query<{ avg: string | null; n: string }>('SELECT avg(stars) AS avg, count(*) AS n FROM trips.ratings WHERE ratee_user_id = $1', [userId])).rows[0]!;
+    return {
+      firstName: given?.split(' ')[0] ?? 'Pasajero',
+      identityVerified: !!k.rows[0],
+      rating: r.avg ? Math.round(Number(r.avg) * 10) / 10 : null,
+      ratingsCount: Number(r.n),
+      ...(await this.#reputation(userId, 'requester')),
+    };
+  }
+
+  /** Viajes completados y etiquetas POSITIVAS recibidas (las de mejora no se muestran públicamente). */
+  async #reputation(userId: string, as: 'driver' | 'requester') {
+    const trips = await this.pool.query<{ n: number; since: Date | null }>(
+      `SELECT count(*)::int AS n, min(ended_at) AS since FROM trips.trips WHERE ${as === 'driver' ? 'driver_id' : 'requester_user_id'} = $1 AND status = 'completed'`,
+      [userId],
+    );
+    const tags = await this.pool.query<{ tag: string; n: number }>(
+      `SELECT tag, count(*)::int AS n FROM trips.ratings, unnest(tags) AS tag WHERE ratee_user_id = $1 GROUP BY tag ORDER BY n DESC`,
+      [userId],
+    );
+    return {
+      tripsCount: trips.rows[0]!.n,
+      activeSince: trips.rows[0]!.since ? trips.rows[0]!.since.getFullYear() : null,
+      tags: tags.rows.filter((t) => isPositiveTag(t.tag)).slice(0, 5).map((t) => ({ tag: t.tag, label: TAG_LABEL[t.tag] ?? t.tag, count: t.n })),
+    };
+  }
+
+  /** Etiquetas de mejora recibidas (solo para la propia persona, agregadas y sin saber quién las puso). */
+  async myFeedback(userId: string) {
+    const { rows } = await this.pool.query<{ tag: string; n: number }>(`SELECT tag, count(*)::int AS n FROM trips.ratings, unnest(tags) AS tag WHERE ratee_user_id = $1 GROUP BY tag`, [userId]);
+    return rows.map((t) => ({ tag: t.tag, label: TAG_LABEL[t.tag] ?? t.tag, count: t.n, positive: isPositiveTag(t.tag) }));
   }
 
   /** Tarjeta del conductor para el seguimiento (sin calificaciones detalladas). */
@@ -292,6 +339,47 @@ export class TripsService {
     return { tripId, status: 'cancelled' };
   }
 
+  /**
+   * "Pedir otra unidad": el pasajero no está conforme con el conductor asignado. El viaje vuelve a buscar
+   * conductor (excluyendo a los anteriores) hasta 5 veces; un sexto intento cierra la carrera.
+   * Si el conductor ya había llegado, la plataforma le paga una compensación por el tiempo perdido.
+   */
+  async reassign(userId: string, tripId: string, reason: string | undefined, req: AppRequest) {
+    const res = await withTransaction(this.pool, async (c) => {
+      const t = (await c.query<TripRow & { reassign_count: number }>('SELECT * FROM trips.trips WHERE id = $1 FOR UPDATE', [tripId])).rows[0];
+      if (!t || t.requester_user_id !== userId) throw new AppError(404, 'not_found', 'Recurso no encontrado');
+      if (t.type !== 'on_demand' || !['accepted', 'arrived'].includes(t.status) || !t.driver_id) throw new AppError(409, 'invalid_state', 'Solo puedes pedir otra unidad cuando ya hay un conductor asignado y aún no subes');
+      const previous = { driverId: t.driver_id, status: t.status };
+      if (t.reassign_count >= MAX_REASSIGN) {
+        await c.query(`UPDATE trips.trips SET status = 'cancelled', cancelled_at = now(), cancelled_by = 'system', cancel_reason = 'max_reassignments', ended_at = now() WHERE id = $1`, [tripId]);
+        await c.query(`INSERT INTO trips.trip_events (trip_id, event, actor_role, actor_id, data) VALUES ($1, 'cancelled', 'system', $2, $3)`, [tripId, userId, { reason: 'max_reassignments' }]);
+        await this.audit.record({ action: 'trip.reassign_limit', resourceType: 'trip', resourceId: tripId }, req, c);
+        return { closed: true as const, previous };
+      }
+      const compensation = t.status === 'arrived' ? this.config.REASSIGN_ARRIVED_COMPENSATION_CENTS : 0;
+      await c.query(
+        `UPDATE trips.trips SET status = 'matching', driver_id = NULL, vehicle_id = NULL, accepted_at = NULL, arrived_at = NULL, reassign_count = reassign_count + 1, search_radius_m = $2 WHERE id = $1`,
+        [tripId, this.config.MATCHING_RADIUS_M],
+      );
+      await c.query(`UPDATE trips.offers SET status = 'reassigned' WHERE trip_id = $1 AND driver_id = $2 AND status = 'accepted'`, [tripId, t.driver_id]);
+      if (compensation > 0) {
+        await postLedger(c, 'reassign_compensation', { type: 'trip', id: tripId }, [{ account: 'promo_expense', debit: compensation }, { account: `driver_payable:${t.driver_id}`, credit: compensation }]);
+      }
+      await c.query(`INSERT INTO trips.trip_events (trip_id, event, actor_role, actor_id, data) VALUES ($1, 'reassigned', 'requester', $2, $3)`, [tripId, userId, { reason: reason ?? null, compensationCents: compensation, attempt: t.reassign_count + 1 }]);
+      await this.audit.record({ action: 'trip.reassign', resourceType: 'trip', resourceId: tripId, metadata: { attempt: t.reassign_count + 1, compensationCents: compensation } }, req, c);
+      return { closed: false as const, previous, remaining: MAX_REASSIGN - (t.reassign_count + 1) };
+    });
+    await this.presence.setTrip(res.previous.driverId, null);
+    if (res.closed) {
+      this.events.emitStatus({ tripId, from: res.previous.status as TripStatus, to: 'cancelled', requesterUserId: userId, driverId: res.previous.driverId });
+      throw new AppError(409, 'max_reassignments', 'Llegaste al máximo de 5 cambios de unidad: la carrera se cerró. Pide un nuevo viaje.');
+    }
+    // El conductor anterior recibe el aviso de que ya no lleva este viaje; el pasajero vuelve a "buscando".
+    this.events.emitStatus({ tripId, from: res.previous.status as TripStatus, to: 'matching', requesterUserId: userId, driverId: res.previous.driverId });
+    await this.matching.dispatch(tripId);
+    return { tripId, status: 'matching', remainingReassignments: res.remaining };
+  }
+
   async arrived(driverId: string, tripId: string, req: AppRequest) {
     await this.#transition(tripId, { userId: driverId, role: 'driver' }, 'arrived', (c) => c.query(`UPDATE trips.trips SET status = 'arrived', arrived_at = now() WHERE id = $1`, [tripId]).then(() => undefined), req);
     return { tripId, status: 'arrived' };
@@ -321,19 +409,22 @@ export class TripsService {
     return { tripId, status: 'completed' };
   }
 
-  async rate(userId: string, tripId: string, stars: number, comment: string | undefined, req: AppRequest) {
+  async rate(userId: string, tripId: string, stars: number, comment: string | undefined, req: AppRequest, tags: string[] = []) {
     const t = await this.load(tripId);
     const role = t?.requester_user_id === userId ? 'requester' : t?.driver_id === userId ? 'driver' : null;
     if (!t || !role) throw new AppError(404, 'not_found', 'Recurso no encontrado');
     if (t.status !== 'completed' || !t.ended_at || Date.now() - t.ended_at.getTime() > 7 * 86400_000) throw new AppError(409, 'not_rateable', 'Solo se califican viajes completados en los últimos 7 días');
     const ratee = role === 'requester' ? t.driver_id! : t.requester_user_id;
+    const allowed = allowedTags(role);
+    const bad = tags.find((x) => !allowed.includes(x));
+    if (bad) throw new AppError(400, 'invalid_tag', `Etiqueta no válida: ${bad}`);
     await this.pool.query(
-      'INSERT INTO trips.ratings (trip_id, rater_user_id, ratee_user_id, stars, comment_enc) VALUES ($1, $2, $3, $4, $5)',
-      [tripId, userId, ratee, stars, comment ? await this.cipher.encrypt(comment, `trips.ratings.comment:${tripId}:${userId}`) : null],
+      'INSERT INTO trips.ratings (trip_id, rater_user_id, ratee_user_id, stars, comment_enc, tags) VALUES ($1, $2, $3, $4, $5, $6)',
+      [tripId, userId, ratee, stars, comment ? await this.cipher.encrypt(comment, `trips.ratings.comment:${tripId}:${userId}`) : null, [...new Set(tags)]],
     ).catch((e: { code?: string }) => {
       throw e.code === '23505' ? new AppError(409, 'already_rated', 'Ya calificaste este viaje') : e;
     });
-    await this.audit.record({ action: 'trip.rate', resourceType: 'trip', resourceId: tripId, metadata: { stars } }, req);
+    await this.audit.record({ action: 'trip.rate', resourceType: 'trip', resourceId: tripId, metadata: { stars, tags: tags.join(',') } }, req);
     return { tripId, stars };
   }
 

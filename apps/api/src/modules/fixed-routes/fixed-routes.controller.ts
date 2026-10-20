@@ -32,6 +32,14 @@ export class RoutesController {
     return this.routes.bookingView(auth.userId, id);
   }
 
+  /** Cambiar a otra unidad antes de subir (máximo 5). */
+  @Post('bookings/:id/switch')
+  @HttpCode(200)
+  switchVehicle(@Req() req: AppRequest, @Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const i = parseInput(z.object({ instanceId: z.string().uuid() }), body);
+    return this.routes.switchVehicle(auth.userId, id, i.instanceId, req);
+  }
+
   @Post('bookings/:id/cancel')
   @HttpCode(200)
   cancel(@Req() req: AppRequest, @Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {

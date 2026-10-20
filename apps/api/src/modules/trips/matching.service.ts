@@ -100,7 +100,10 @@ export class MatchingService implements OnModuleInit, OnModuleDestroy {
     const { rows } = await this.pool.query(
       `SELECT o.id AS "offerId", o.trip_id AS "tripId", o.expires_at AS "expiresAt", o.distance_m AS "pickupDistanceM",
               t.origin_lat AS "originLat", t.origin_lng AS "originLng", t.dest_lat AS "destLat", t.dest_lng AS "destLng",
-              t.quoted_fare_cents AS "fareCents", t.distance_m AS "tripDistanceM", t.party_size AS "partySize", t.payment_method AS "paymentMethod"
+              t.quoted_fare_cents AS "fareCents", t.surge_cents AS "surgeCents", t.distance_m AS "tripDistanceM", t.party_size AS "partySize", t.payment_method AS "paymentMethod",
+              -- Reputación del pasajero visible antes de aceptar.
+              (SELECT round(avg(stars), 1)::float8 FROM trips.ratings r WHERE r.ratee_user_id = t.requester_user_id) AS "passengerRating",
+              (SELECT count(*)::int FROM trips.trips x WHERE x.requester_user_id = t.requester_user_id AND x.status = 'completed') AS "passengerTrips"
        FROM trips.offers o JOIN trips.trips t ON t.id = o.trip_id
        WHERE o.driver_id = $1 AND o.status = 'pending' AND o.expires_at > now()`,
       [driverId],

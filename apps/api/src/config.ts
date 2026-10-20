@@ -50,6 +50,8 @@ const schema = z
     /** Tarifa dinámica (activable por ciudad/despliegue: la tarifa de taxi la regula la ATM, ver revisión legal). */
     SURGE_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
     SURGE_MAX: z.coerce.number().min(1).max(2).default(1.5),
+    /** Compensación (la paga la plataforma) al conductor que ya había llegado cuando el pasajero pide otra unidad. */
+    REASSIGN_ARRIVED_COMPENSATION_CENTS: z.coerce.number().int().min(0).max(500).default(100),
 
     MATCHING_OFFER_TTL_SECONDS: z.coerce.number().int().min(5).max(60).default(15),
     MATCHING_RADIUS_M: z.coerce.number().int().min(500).max(20000).default(5000),

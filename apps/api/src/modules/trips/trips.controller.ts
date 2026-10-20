@@ -52,6 +52,12 @@ export class TripsController {
     return this.trips.history(auth.userId, auth.clientId === 'intitaxi-driver');
   }
 
+  /** Mis etiquetas recibidas (positivas y de mejora), agregadas y anónimas. */
+  @Get('me/feedback')
+  feedback(@Auth() auth: AuthContext) {
+    return this.trips.myFeedback(auth.userId);
+  }
+
   @Get(':id')
   get(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.trips.viewFor(auth.userId, id);
@@ -72,8 +78,16 @@ export class TripsController {
   @Post(':id/rating')
   @HttpCode(201)
   rate(@Req() req: AppRequest, @Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
-    const { stars, comment } = parseInput(z.object({ stars: z.number().int().min(1).max(5), comment: z.string().max(500).optional() }), body);
-    return this.trips.rate(auth.userId, id, stars, comment, req);
+    const { stars, comment, tags } = parseInput(z.object({ stars: z.number().int().min(1).max(5), comment: z.string().max(500).optional(), tags: z.array(z.string().max(40)).max(6).default([]) }), body);
+    return this.trips.rate(auth.userId, id, stars, comment, req, tags);
+  }
+
+  /** "Pedir otra unidad" (máximo 5 por viaje; el sexto intento cierra la carrera). */
+  @Post(':id/reassign')
+  @HttpCode(200)
+  reassign(@Req() req: AppRequest, @Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const { reason } = parseInput(z.object({ reason: z.string().max(200).regex(/^[^<>]*$/).optional() }), body ?? {});
+    return this.trips.reassign(auth.userId, id, reason, req);
   }
 
   @Post(':id/contact-session')

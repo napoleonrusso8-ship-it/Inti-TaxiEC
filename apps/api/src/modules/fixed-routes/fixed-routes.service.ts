@@ -29,6 +29,7 @@ const BOOKING_TTL_MIN = 45;
 export type VehicleType = 'taxi' | 'van';
 export const VEHICLE_LABEL: Record<VehicleType, string> = { taxi: 'Taxi', van: 'Furgoneta' };
 const MAX_PIN_ATTEMPTS = 3;
+const MAX_SWITCH = 5;
 
 @Injectable()
 export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
@@ -250,7 +251,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
 
   async bookingView(userId: string, bookingId: string) {
     const { rows } = await this.pool.query(
-      `SELECT b.*, sb.name AS boarding, sa.name AS alighting, v.plate, v.color, v.make, v.model, i.vehicle_type
+      `SELECT b.*, sb.name AS boarding, sa.name AS alighting, v.plate, v.color, v.make, v.model, i.vehicle_type, i.driver_id, i.vehicle_id
        FROM fixed_routes.bookings b JOIN fixed_routes.stops sb ON sb.id = b.boarding_stop_id JOIN fixed_routes.stops sa ON sa.id = b.alighting_stop_id
        JOIN fixed_routes.instances i ON i.id = b.instance_id JOIN drivers.vehicles v ON v.id = i.vehicle_id
        WHERE b.id = $1 AND b.requester_user_id = $2`,
@@ -265,7 +266,49 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
         ? { final: true, ruleName: b.fare_rule_name, unitCents: b.unit_fare_cents, totalCents: b.unit_fare_cents * b.seats }
         : { final: false, estimatedUnitCents: b.estimated_unit_fare_cents, estimatedTotalCents: b.estimated_unit_fare_cents * b.seats },
       expiresAt: b.status === 'reserved' ? b.expires_at : null,
+      switches: { used: b.switch_count, max: MAX_SWITCH },
+      driver: await this.trips.driverCard(b.driver_id, b.vehicle_id),
     };
+  }
+
+  /** Cambiar de unidad (otro vehículo del mismo sentido) antes de subir: máximo 5 veces; la sexta cancela la reserva. */
+  async switchVehicle(userId: string, bookingId: string, instanceId: string, req: AppRequest) {
+    const out = await withTransaction(this.pool, async (c) => {
+      const b = (await c.query(`SELECT * FROM fixed_routes.bookings WHERE id = $1 AND requester_user_id = $2 FOR UPDATE`, [bookingId, userId])).rows[0];
+      if (!b) throw new AppError(404, 'not_found', 'Recurso no encontrado');
+      if (b.status !== 'reserved') throw new AppError(409, 'invalid_state', 'Solo puedes cambiar de unidad antes de subir');
+      if (b.switch_count >= MAX_SWITCH) {
+        await this.#release(c, b, 'cancelled', 'system');
+        return { closed: true as const, b };
+      }
+      if (b.instance_id === instanceId) throw new AppError(400, 'same_vehicle', 'Ya estás en esa unidad');
+      // Bloqueo en orden fijo para evitar interbloqueos entre cambios simultáneos.
+      const ids = [b.instance_id, instanceId].sort();
+      const insts = (await c.query(`SELECT * FROM fixed_routes.instances WHERE id = ANY($1) ORDER BY id FOR UPDATE`, [ids])).rows;
+      const from = insts.find((i) => i.id === b.instance_id)!;
+      const to = insts.find((i) => i.id === instanceId);
+      if (!to || to.status !== 'in_service' || to.direction_id !== from.direction_id) throw new AppError(404, 'not_found', 'Esa unidad no está disponible en tu ruta y sentido');
+      if (to.seats_total - to.seats_taken < b.seats) throw new AppError(409, 'not_enough_seats', 'Esa unidad no tiene asientos suficientes');
+      const stop = (await c.query(`SELECT lat::float8 AS lat, lng::float8 AS lng FROM fixed_routes.stops WHERE id = $1`, [b.boarding_stop_id])).rows[0];
+      const dir = (await c.query(`SELECT d.route_id, d.direction FROM fixed_routes.directions d WHERE d.id = $1`, [to.direction_id])).rows[0];
+      const dirRow = await this.#direction(dir.route_id, dir.direction, c);
+      const path = this.#path(dirRow!, await this.stops(to.direction_id, c));
+      const loc = await this.presence.lastLocation(to.driver_id);
+      if (loc && etaSeconds(path, loc, stop) === null) throw new AppError(409, 'stop_passed', 'Esa unidad ya pasó por tu parada');
+      await c.query('UPDATE fixed_routes.instances SET seats_taken = seats_taken - $2 WHERE id = $1', [from.id, b.seats]);
+      await c.query('UPDATE fixed_routes.instances SET seats_taken = seats_taken + $2 WHERE id = $1', [to.id, b.seats]);
+      await c.query('UPDATE fixed_routes.bookings SET instance_id = $2, switch_count = switch_count + 1 WHERE id = $1', [bookingId, to.id]);
+      await c.query('UPDATE trips.trips SET driver_id = $2, vehicle_id = $3 WHERE id = $1', [b.trip_id, to.driver_id, to.vehicle_id]);
+      await c.query(`INSERT INTO trips.trip_events (trip_id, event, actor_role, actor_id, data) VALUES ($1, 'reassigned', 'requester', $2, $3)`, [b.trip_id, userId, { fromInstance: from.id, toInstance: to.id }]);
+      await this.audit.record({ action: 'route.switch_vehicle', resourceType: 'trip', resourceId: b.trip_id, metadata: { attempt: b.switch_count + 1 } }, req, c);
+      return { closed: false as const, b, driverId: to.driver_id as string, remaining: MAX_SWITCH - (b.switch_count + 1) };
+    });
+    if (out.closed) {
+      this.events.emitStatus({ tripId: out.b.trip_id, from: 'accepted', to: 'cancelled', requesterUserId: userId, driverId: null });
+      throw new AppError(409, 'max_reassignments', 'Llegaste al máximo de 5 cambios de unidad: la reserva se cerró. Reserva de nuevo.');
+    }
+    this.events.emitStatus({ tripId: out.b.trip_id, from: 'accepted', to: 'accepted', requesterUserId: userId, driverId: out.driverId });
+    return { bookingId, remainingSwitches: out.remaining, ...(await this.bookingView(userId, bookingId)) };
   }
 
   async cancel(userId: string, bookingId: string, req: AppRequest) {
