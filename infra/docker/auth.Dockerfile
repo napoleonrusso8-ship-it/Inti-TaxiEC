@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # Construcción reproducible + imagen final distroless sin shell, ejecutando como usuario sin privilegios.
-FROM node:22.22.0-bookworm-slim AS build
+FROM node:26.12.0-bookworm-slim AS build
 WORKDIR /repo
 RUN corepack enable
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
