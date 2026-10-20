@@ -26,7 +26,7 @@ jobs:
       E2E_REDIS_URL: redis://localhost:6379/5
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -52,7 +52,7 @@ jobs:
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
       - name: SAST (Semgrep)
         run: pipx run semgrep scan --config p/owasp-top-ten --config p/typescript --config .semgrep.yml --error
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - name: SCA (dependencias)
