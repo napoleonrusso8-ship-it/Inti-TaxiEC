@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { adminSession, approvedDriver, completedTrip, freshIdentity, offerFor, onlineDriver, requestTrip, waitFor } from '../src/flows.js';
+import { adminSession, approvedDriver, completedTrip, freshIdentity, offerFor, onlineDriver, requestTrip, waitFor, r1AllDayForTests } from '../src/flows.js';
 import { Stack } from '../src/stack.js';
 
 const s = new Stack();
@@ -97,7 +97,8 @@ describe('Pedir otra unidad', () => {
 describe('Taxi Ruta: cambiar de unidad', () => {
   it('mueve los asientos a otro vehículo (máx. 5) y muestra el perfil del nuevo conductor', async () => {
     const [managerA, managerB] = (await Promise.all([adminSession(s, 'route_manager'), adminSession(s, 'route_manager')])) as [Admin, Admin];
-    const id = (await s.pool.query(`SELECT id FROM fixed_routes.routes WHERE code = 'R1'`)).rows[0].id;
+    await r1AllDayForTests(s);
+  const id = (await s.pool.query(`SELECT id FROM fixed_routes.routes WHERE code = 'R1'`)).rows[0].id;
     await managerA.web.call('api', 'POST', `/v1/admin/routes/${id}/validate`);
     await managerA.web.call('api', 'POST', `/v1/admin/routes/${id}/publish-request`);
     await managerB.web.call('api', 'POST', `/v1/admin/routes/${id}/publish-decision`, { approve: true });

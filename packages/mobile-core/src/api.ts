@@ -172,7 +172,7 @@ export function passengerApi(c: ApiClient) {
 
     // Taxi Ruta
     routes: () =>
-      c.call<{ id: string; code: string; name: string; currentFare: { name: string; amountCents: number } | null; currentFares: { taxi: { name: string; amountCents: number } | null; van: { name: string; amountCents: number } | null } }[]>('api', 'GET', '/v1/routes'),
+      c.call<{ id: string; code: string; name: string; open: boolean; serviceHours: ServiceHours | null; currentFare: { name: string; amountCents: number } | null; currentFares: { taxi: { name: string; amountCents: number } | null; van: { name: string; amountCents: number } | null } }[]>('api', 'GET', '/v1/routes'),
     route: (id: string) => c.call<RouteDetail>('api', 'GET', `/v1/routes/${id}`),
     routeVehicles: (id: string, direction: string, stopId?: string) =>
       c.call<{ instanceId: string; vehicleType: 'taxi' | 'van'; vehicleLabel: string; seatsAvailable: number; vehicle: { plate: string; color: string; make: string; model: string }; location: LatLng | null; etaSeconds: number | null; currentUnitFareCents: number | null; currentFareName: string | null }[]>(
@@ -197,11 +197,20 @@ export interface RouteStop {
   seq: number;
 }
 
+/** Horario de servicio de una ruta (hora de Guayaquil). `lastBoarding` es el último minuto para subir. */
+export interface ServiceHours {
+  start: string;
+  end: string;
+  lastBoarding: string;
+}
+
 export interface RouteDetail {
   id: string;
   code: string;
   name: string;
   corridor: string | null;
+  open: boolean;
+  serviceHours: ServiceHours | null;
   currentFare: { name: string; amountCents: number } | null;
   fares: { vehicleType: 'taxi' | 'van'; name: string; from: string; to: string; amountCents: number }[];
   fareNote: string;

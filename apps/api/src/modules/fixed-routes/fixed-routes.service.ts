@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { constantTimeEqual, type FieldCipher } from '@intitaxi/crypto';
 import { withTransaction, type Pool, type PoolClient } from '@intitaxi/db';
-import { etaSeconds, fareAt, localParts, projectOnPath, type FareRule, type LatLng } from '@intitaxi/domain';
+import { etaSeconds, fareAt, isOpen, localParts, projectOnPath, type FareRule, type LatLng, type ServiceHours } from '@intitaxi/domain';
 import { AppError, AuditService, RateLimiter, tooManyRequests, type AppRequest, type AttestedDevice } from '@intitaxi/nest-common';
 import { randomInt, randomUUID } from 'node:crypto';
 import { CONFIG, FIELD_CIPHER, PG_POOL } from '../../tokens.js';
@@ -81,6 +81,22 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     return rows.map((r) => ({ id: r.id, name: r.name, startLocal: r.s, endLocal: r.e, amountCents: r.amount_cents, validFrom: r.vf, validTo: r.vt, priority: r.priority, vehicleType: r.vehicle_type }));
   }
 
+  /** Horario de servicio (hora de Guayaquil). `null` = 24 h. */
+  async serviceHours(routeId: string, c: Pool | PoolClient = this.pool): Promise<ServiceHours | null> {
+    const r = (await c.query(`SELECT to_char(service_start_local, 'HH24:MI') AS start, to_char(service_end_local, 'HH24:MI') AS "end" FROM fixed_routes.routes WHERE id = $1`, [routeId])).rows[0];
+    return r?.start ? { start: r.start, end: r.end } : null;
+  }
+
+  /** Vista pública del horario: abierta o cerrada ahora y hasta qué hora se puede subir. */
+  #hoursView(h: ServiceHours | null, at = new Date()) {
+    return { open: isOpen(h, at), serviceHours: h ? { ...h, lastBoarding: lastMinute(h.end) } : null };
+  }
+
+  async #assertOpen(routeId: string, c: Pool | PoolClient = this.pool, at = new Date()) {
+    const h = await this.serviceHours(routeId, c);
+    if (!isOpen(h, at)) throw new AppError(409, 'route_closed', `Taxi Ruta está cerrado. Funciona de ${h!.start} a ${lastMinute(h!.end)} (hora de Guayaquil); abre a las ${h!.start}`);
+  }
+
   async stops(directionId: string, c: Pool | PoolClient = this.pool): Promise<StopView[]> {
     const { rows } = await c.query(
       `SELECT s.id, s.name, s.reference, s.lat::float8 AS lat, s.lng::float8 AS lng, ds.seq, s.location_verified AS "locationVerified"
@@ -106,8 +122,10 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     const { rows } = await this.pool.query(`SELECT id, code, name, city, corridor FROM fixed_routes.routes WHERE status = 'active' ORDER BY code`);
     return Promise.all(
       rows.map(async (r) => {
-        const [taxi, van] = [fareAt(await this.rules(r.id, this.pool, 'taxi'), new Date()), fareAt(await this.rules(r.id, this.pool, 'van'), new Date())];
-        return { ...r, currentFare: this.#fareView(taxi), currentFares: { taxi: this.#fareView(taxi), van: this.#fareView(van) } };
+        const hours = this.#hoursView(await this.serviceHours(r.id));
+        // Cerrada: no hay tarifa vigente que mostrar.
+        const [taxi, van] = hours.open ? [fareAt(await this.rules(r.id, this.pool, 'taxi'), new Date()), fareAt(await this.rules(r.id, this.pool, 'van'), new Date())] : [null, null];
+        return { ...r, ...hours, currentFare: this.#fareView(taxi), currentFares: { taxi: this.#fareView(taxi), van: this.#fareView(van) } };
       }),
     );
   }
@@ -121,12 +139,15 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     if (!r || (!includeDraft && r.status !== 'active')) throw new AppError(404, 'not_found', 'Ruta no encontrada');
     const dirs = (await this.pool.query(`SELECT id, direction, label, path, validation_report FROM fixed_routes.directions WHERE route_id = $1 ORDER BY direction DESC`, [routeId])).rows;
     const rules = await this.rules(routeId);
+    const hours = this.#hoursView(await this.serviceHours(routeId));
+    const now = (t: VehicleType) => (hours.open ? this.#fareView(fareAt(rules.filter((f) => f.vehicleType === t), new Date())) : null);
     const schedules = (await this.pool.query(`SELECT days_of_week AS days, to_char(service_start_local, 'HH24:MI') AS start, to_char(service_end_local, 'HH24:MI') AS "end", headway_minutes AS "headwayMinutes" FROM fixed_routes.schedules WHERE route_id = $1`, [routeId])).rows;
     return {
       ...r,
       timezone: 'America/Guayaquil',
-      currentFare: this.#fareView(fareAt(rules.filter((f) => f.vehicleType === 'taxi'), new Date())),
-      currentFares: { taxi: this.#fareView(fareAt(rules.filter((f) => f.vehicleType === 'taxi'), new Date())), van: this.#fareView(fareAt(rules.filter((f) => f.vehicleType === 'van'), new Date())) },
+      ...hours,
+      currentFare: now('taxi'),
+      currentFares: { taxi: now('taxi'), van: now('van') },
       fares: rules.map((f) => ({ vehicleType: f.vehicleType, name: f.name, from: f.startLocal.slice(0, 5), to: f.endLocal.slice(0, 5), amountCents: f.amountCents, validFrom: f.validFrom, validTo: f.validTo })),
       fareNote: 'La tarifa se fija con la hora de Guayaquil en el momento en que confirmas que subiste al vehículo.',
       schedules,
@@ -152,6 +173,8 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
 
   async quote(routeId: string, input: { direction: string; boardingStopId: string; alightingStopId: string; seats: number; vehicleType?: VehicleType }) {
     const v = await this.#validateStops(routeId, input.direction, input.boardingStopId, input.alightingStopId);
+    await this.#assertOpen(routeId);
+    const hours = await this.serviceHours(routeId);
     const vehicleType = input.vehicleType ?? 'taxi';
     const rule = fareAt(await this.rules(routeId, this.pool, vehicleType), new Date());
     if (!rule) throw new AppError(409, 'no_fare', 'La ruta no tiene tarifa vigente en este horario');
@@ -164,7 +187,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
       totalCents: rule.amountCents * input.seats,
       currency: 'USD',
       localTime: localParts(new Date()).time.slice(0, 5),
-      note: 'Estimado: el precio final se fija al confirmar tu subida (hora de Guayaquil). Si subes desde las 21:00 aplica la tarifa nocturna.',
+      note: `Estimado: el precio final se fija al confirmar tu subida (hora de Guayaquil). Si subes desde las 21:00 aplica la tarifa nocturna.${hours ? ` La ruta cierra a las ${hours.end}: desde esa hora no se sube a nadie.` : ''}`,
       distanceM: v.distanceM,
     };
   }
@@ -176,6 +199,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     const stops = await this.stops(dir.id);
     const path = this.#path(dir, stops);
     const stop = stopId ? stops.find((s) => s.id === stopId) : undefined;
+    if (!isOpen(await this.serviceHours(routeId), new Date())) return [];
     const { rows } = await this.pool.query(
       `SELECT i.id, i.driver_id, i.vehicle_type, i.seats_total - i.seats_taken AS free, v.plate, v.color, v.make, v.model
        FROM fixed_routes.instances i JOIN drivers.vehicles v ON v.id = i.vehicle_id WHERE i.direction_id = $1 AND i.status = 'in_service'`,
@@ -218,6 +242,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     let driverId = '';
     await withTransaction(this.pool, async (c) => {
       const v = await this.#validateStops(routeId, input.direction, input.boardingStopId, input.alightingStopId, c);
+      await this.#assertOpen(routeId, c);
       const inst = (await c.query(`SELECT * FROM fixed_routes.instances WHERE id = $1 AND direction_id = $2 AND status = 'in_service' FOR UPDATE`, [input.instanceId, v.dir.id])).rows[0];
       if (!inst) throw new AppError(404, 'not_found', 'Vehículo no disponible en esta ruta y sentido');
       if (inst.seats_total - inst.seats_taken < input.seats) throw new AppError(409, 'not_enough_seats', 'No hay asientos suficientes en este vehículo');
@@ -287,6 +312,8 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
         return { closed: true as const, b };
       }
       if (b.instance_id === instanceId) throw new AppError(400, 'same_vehicle', 'Ya estás en esa unidad');
+      const routeId = (await c.query(`SELECT d.route_id FROM fixed_routes.instances i JOIN fixed_routes.directions d ON d.id = i.direction_id WHERE i.id = $1`, [b.instance_id])).rows[0].route_id;
+      await this.#assertOpen(routeId, c);
       // Bloqueo en orden fijo para evitar interbloqueos entre cambios simultáneos.
       const ids = [b.instance_id, instanceId].sort();
       const insts = (await c.query(`SELECT * FROM fixed_routes.instances WHERE id = ANY($1) ORDER BY id FOR UPDATE`, [ids])).rows;
@@ -336,10 +363,21 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     await c.query(`INSERT INTO trips.trip_events (trip_id, event, actor_role) VALUES ($1, $2, $3)`, [b.trip_id, status, by]);
   }
 
-  /** Reservas no abordadas a tiempo: se liberan los asientos. */
-  async expireBookings() {
+  /** Reservas no abordadas a tiempo, o pendientes cuando la ruta cierra (23:00 en Ruta 1): se liberan los asientos. */
+  async expireBookings(at = new Date()) {
+    const local = localParts(at).time;
     const ended = await withTransaction(this.pool, async (c) => {
-      const { rows } = await c.query(`SELECT * FROM fixed_routes.bookings WHERE status = 'reserved' AND expires_at < now() FOR UPDATE SKIP LOCKED LIMIT 100`);
+      const { rows } = await c.query(
+        `SELECT b.* FROM fixed_routes.bookings b
+         JOIN fixed_routes.instances i ON i.id = b.instance_id JOIN fixed_routes.directions d ON d.id = i.direction_id JOIN fixed_routes.routes r ON r.id = d.route_id
+         WHERE b.status = 'reserved' AND (
+           b.expires_at < now()
+           OR (r.service_start_local IS NOT NULL AND NOT CASE WHEN r.service_start_local < r.service_end_local
+                 THEN $1::time >= r.service_start_local AND $1::time < r.service_end_local
+                 ELSE $1::time >= r.service_start_local OR $1::time < r.service_end_local END)
+         ) FOR UPDATE OF b SKIP LOCKED LIMIT 100`,
+        [local],
+      );
       for (const b of rows) await this.#release(c, b, 'expired', 'system');
       return rows;
     });
@@ -362,6 +400,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     if (!en.rowCount) throw new AppError(403, 'not_enabled', 'No estás habilitado para esta ruta');
     const dir = await this.#direction(routeId, direction);
     if (!dir || dir.status !== 'active') throw new AppError(404, 'not_found', 'Ruta no disponible');
+    await this.#assertOpen(routeId);
     const issues = await this.drivers.eligibility(driverId);
     if (issues.length) throw new AppError(403, 'not_eligible', `No puedes operar: ${issues.join(', ')}`);
     await this.kyc.assertDriverIdentityFresh(driverId);
@@ -418,6 +457,8 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     const { route_id: routeId, vehicle_type: vehicleType } = (
       await this.pool.query(`SELECT d.route_id, i.vehicle_type FROM fixed_routes.instances i JOIN fixed_routes.directions d ON d.id = i.direction_id WHERE i.id = $1`, [instanceId])
     ).rows[0];
+    // Desde la hora de cierre no se sube a nadie (quien ya va a bordo termina su viaje).
+    await this.#assertOpen(routeId, this.pool, boardedAt);
     const rule = fareAt(await this.rules(routeId, this.pool, vehicleType), boardedAt);
     if (!rule) throw new AppError(409, 'no_fare', 'Sin tarifa vigente');
     await withTransaction(this.pool, async (c) => {
@@ -475,4 +516,11 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     const fee = (await this.pool.query('SELECT platform_fee_cents FROM fixed_routes.instances WHERE id = $1', [instanceId])).rows[0].platform_fee_cents;
     return { instanceId, status: 'finished', cancelledBookings: ended.length, platformFeeCents: fee };
   }
+}
+
+/** "23:00" → "22:59": último minuto en que se puede subir. */
+function lastMinute(end: string) {
+  const [h, m] = end.split(':').map(Number);
+  const t = (h! * 60 + m! + 1439) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 }

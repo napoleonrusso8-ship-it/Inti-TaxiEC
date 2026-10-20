@@ -40,9 +40,14 @@ export function Routes({ vehicleType }: { vehicleType?: 'taxi' | 'van' }) {
               </Text>
               <Text style={{ color: C.brand, fontSize: 22 }}>›</Text>
             </Row>
+            {r.serviceHours ? (
+              <P muted style={r.open ? undefined : { color: C.danger }}>
+                {r.open ? `Abierta · último abordaje ${r.serviceHours.lastBoarding}` : `Cerrada · abre a las ${r.serviceHours.start}`}
+              </P>
+            ) : null}
             <Row style={{ gap: 16 }}>
-              {filter !== 'van' ? <P muted>🚕 {r.currentFares.taxi ? `${money(r.currentFares.taxi.amountCents)} · ${r.currentFares.taxi.name}` : 'sin tarifa ahora'}</P> : null}
-              {filter !== 'taxi' ? <P muted>🚐 {r.currentFares.van ? `${money(r.currentFares.van.amountCents)} · ${r.currentFares.van.name}` : 'sin tarifa ahora'}</P> : null}
+              {filter !== 'van' ? <P muted>🚕 {r.currentFares.taxi ? `${money(r.currentFares.taxi.amountCents)} · ${r.currentFares.taxi.name}` : '—'}</P> : null}
+              {filter !== 'taxi' ? <P muted>🚐 {r.currentFares.van ? `${money(r.currentFares.van.amountCents)} · ${r.currentFares.van.name}` : '—'}</P> : null}
             </Row>
           </Card>
         </Pressable>

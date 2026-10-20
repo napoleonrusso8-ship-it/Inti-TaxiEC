@@ -158,3 +158,17 @@ export async function completedTrip(s: Stack, opts: { at: { lat: number; lng: nu
   await drv.d.call('api', 'POST', `/v1/driver/trips/${t.body.id}/complete`);
   return { drv, p, trip: t };
 }
+
+/**
+ * La Ruta 1 real cierra a las 23:00. Para que las pruebas que la operan pasen a cualquier hora, se la abre las 24 h
+ * con una franja de madrugada SOLO de prueba (mismo valor nocturno). El cierre se prueba aparte (m9).
+ */
+export async function r1AllDayForTests(s: Stack) {
+  await s.pool.query(`UPDATE fixed_routes.routes SET service_start_local = NULL, service_end_local = NULL WHERE code = 'R1'`);
+  await s.pool.query(
+    `INSERT INTO fixed_routes.fare_rules (id, route_id, name, start_local, end_local, amount_cents, vehicle_type)
+     SELECT gen_random_uuid(), f.route_id, 'Nocturna', '23:00', '06:30', f.amount_cents, f.vehicle_type FROM fixed_routes.fare_rules f JOIN fixed_routes.routes r ON r.id = f.route_id
+     WHERE r.code = 'R1' AND f.retired_at IS NULL AND f.start_local = '21:00' AND f.end_local = '23:00'
+       AND NOT EXISTS (SELECT 1 FROM fixed_routes.fare_rules x WHERE x.route_id = f.route_id AND x.vehicle_type = f.vehicle_type AND x.retired_at IS NULL AND x.start_local = '23:00')`,
+  );
+}

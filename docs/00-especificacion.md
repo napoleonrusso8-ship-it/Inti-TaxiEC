@@ -50,7 +50,7 @@ Rol: arquitecto de software senior y experto en ciberseguridad (OWASP, ISO 27001
 ## 7. Taxi Ruta
 **Ruta 1: Villa Bonita – Centro (Guayaquil).** Vías: Vía a Daule → Autopista Narcisa de Jesús → Av. Francisco de Orellana → Av. Juan Tanca Marenco → Av. de las Américas.
 Paradas: San Marino, Mall del Sol, City Mall, Riocentro Norte, Mall del Río, Parque Centenario, 9 de Octubre, Vélez, Chile y Colón, Bahía – Castillo.
-Tarifa por persona: **$3.00** de 06:30 a 20:59; **$4.00** de 21:00 a 06:29 (nocturna). Se calcula con la hora de inicio del viaje en `America/Guayaquil`.
+Tarifa por persona: **$3.00** de 06:30 a 20:59 (diurna); **$4.00** de 21:00 a 22:59 (nocturna). **Desde las 23:00 la ruta se cierra** y abre a las 06:30 (indicación del operador, 2026-10-20). Se calcula con la hora de Guayaquil (`America/Guayaquil`) al confirmar el abordaje.
 
 Requisitos: ruta y paradas en el mapa (verificar orden con la API de mapas y proponer correcciones); elegir parada de subida/bajada y asientos (acompañantes según §5.1); vehículos en tiempo real, asientos libres y ETA; ambos sentidos; pago por persona y recibo con tarifa aplicada; conductores habilitados por ruta; rutas/paradas/horarios/tarifas configurables sin cambiar código; mismo manifiesto y SOS de §6.
 

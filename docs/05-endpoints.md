@@ -145,7 +145,7 @@
 | GET | `/v1/admin/drivers/{id}/documents/{docId}/view-url` | URL prefirmada de 60 s (motivo obligatorio) | `driver_reviewer` |
 | POST | `/v1/admin/drivers/{id}/approve` · `/reject` · `/suspend` | Decisión | `driver_reviewer` (no sobre sí mismo) |
 | GET/POST/DELETE | `/v1/admin/routes/{id}/drivers` · `/{driverId}` | Habilitar o retirar un conductor de una ruta | `route_manager` |
-| GET/POST/PUT | `/v1/admin/routes` · `/{id}` · `/{id}/directions/{dir}/stops` · `/{id}/fares` · `/{id}/schedules` · POST `/{id}/pause` | CRUD de Taxi Ruta (borrador → publicar; una ruta activa se pausa para editarla) | `route_manager` |
+| GET/POST/PUT | `/v1/admin/routes` · `/{id}` · `/{id}/directions/{dir}/stops` · `/{id}/fares` · `/{id}/service-hours` · `/{id}/schedules` · POST `/{id}/pause` | CRUD de Taxi Ruta (borrador → publicar; una ruta activa se pausa para editarla) | `route_manager` |
 | POST | `/v1/admin/routes/{id}/validate` | Valida el orden de las paradas con la API de mapas y devuelve correcciones propuestas | `route_manager` |
 | POST | `/v1/admin/routes/{id}/publish-request` · `/publish-decision` | Publicar (cuatro ojos: quien solicita no aprueba) | `route_manager` + segundo aprobador |
 | GET/POST | `/v1/admin/disputes?status` · `/{id}?reason=` · `/{id}/assign` · `/{id}/resolve` | Disputas: el relato solo con motivo auditado; resolución con reembolso | `support` |

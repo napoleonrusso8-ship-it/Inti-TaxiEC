@@ -25,7 +25,7 @@ Decisión aprobada (D14): **la tarifa es la vigente, en hora de `America/Guayaqu
 - Al reservar y cotizar se muestra la tarifa como **estimada**, con la nota de que se fija al subir.
 - Al abordar se guardan en la reserva `fare_rule_id`, `fare_rule_name` y `unit_fare_cents` (congelados); el viaje queda con `final_fare_cents = unitario × asientos`. El recibo muestra la franja aplicada, el unitario, los asientos, las paradas y la hora de subida.
 - Las reglas tarifarias **no se borran**: al cambiarlas se retiran (`retired_at`) porque los recibos las citan.
-- El panel rechaza tarifas con huecos o solapes (verificación minuto a minuto de las 24 h).
+- El panel rechaza tarifas con huecos o solapes (verificación minuto a minuto del horario de servicio; 24 h si la ruta no tiene horario).
 
 ## 3. Flujo
 
@@ -70,7 +70,7 @@ Reglas adicionales:
 - Borrador `R1` *Villa Bonita – Centro*, corredor Vía a Daule → Narcisa de Jesús → Francisco de Orellana → Juan Tanca Marenco → Av. de las Américas.
 - Ida: Villa Bonita (origen) · San Marino · Mall del Sol · City Mall · Riocentro Norte · Mall del Río · Parque Centenario · 9 de Octubre · Vélez · Chile y Colón · Bahía – Castillo.
 - Vuelta: orden inverso **provisional** (en el Centro hay calles de un solo sentido; el equipo de rutas debe cargar el recorrido real de vuelta).
-- Tarifas: Diurna 06:30–21:00 $3.00, Nocturna 21:00–06:30 $4.00 por persona.
+- Horario: 06:30 a 22:59 (cierra a las 23:00). Tarifas por persona: Diurna 06:30–20:59 $3.00 (furgoneta $2.80), Nocturna 21:00–22:59 $4.00 (furgoneta $3.80). Ver §Horario de servicio.
 - **Coordenadas aproximadas y sin verificar** (`location_verified = false`), en especial *Mall del Río*. Antes de publicar: confirmarlas en terreno, validar con la clave de Google Maps y publicar con cuatro ojos.
 
 ## 5. Endpoints
@@ -114,3 +114,17 @@ Riesgo residual: las coordenadas sembradas no están verificadas y la ETA usa un
 - **Regulación de transporte:** Taxi Ruta (cobro por asiento en ruta fija) podría requerir un permiso de operación de transporte comercial o de rutas ante la ANT o la ATM de Guayaquil. **Abogado regulatorio antes de operar.**
 - **Información al consumidor:** la tarifa se fija al subir; la app lo avisa al cotizar y reservar, pero conviene validar el texto con un abogado (Ley Orgánica de Defensa del Consumidor).
 - **Coordenadas y recorrido de vuelta de la Ruta 1:** confirmación en terreno por el operador de la ruta.
+
+## Horario de servicio (actualización 2026-10-20)
+
+Cada ruta puede tener un horario de servicio `[inicio, fin)` en hora de Guayaquil (`PUT /v1/admin/routes/{id}/service-hours`, `route_manager`, solo en borrador o pausada). Ruta 1: **06:30 a 23:00** — diurna 06:30–20:59, nocturna 21:00–22:59.
+
+Fuera del horario la ruta está **cerrada**:
+- La lista y el detalle muestran `open: false`, sin tarifa vigente, y "abre a las 06:30".
+- No se cotiza, no se reserva, no se cambia de unidad, no se inicia recorrido y **no se confirma ningún abordaje** (`409 route_closed`). Quien sube a las 22:59:59 paga nocturna; a las 23:00:00 ya no puede subir.
+- Quien ya va a bordo termina su viaje con normalidad.
+- Las reservas pendientes se liberan automáticamente (barrido cada 30 s) y el pasajero recibe el cambio de estado.
+
+La nocturna anterior (21:00–06:30) se **retiró** (no se borró: los recibos antiguos la siguen citando) y se creó la nueva 21:00–23:00 con el mismo valor (migración `0023_route_service_hours.sql`).
+
+**Riesgos y mitigación:** la hora siempre la decide el servidor (no el teléfono), así que cambiar la hora del celular no permite subir después del cierre; el cierre se aplica también al abordaje, no solo a la reserva, para que nadie quede reservado esperando una unidad que ya no pasará. **Revisión humana:** confirmar con la ATM si el horario 06:30–23:00 de la ruta está autorizado y si hay excepciones en feriados.

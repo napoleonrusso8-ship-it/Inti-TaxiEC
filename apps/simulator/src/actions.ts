@@ -393,13 +393,23 @@ export const actions: Record<string, Handler> = {
   },
   'admin.routes': (e) => e.device.call('api', 'GET', '/v1/admin/routes'),
   'admin.route': (e, p) => e.device.call('api', 'GET', `/v1/admin/routes/${p.routeId}`),
-  'admin.route.fares': (e, p) =>
-    e.device.call('api', 'PUT', `/v1/admin/routes/${p.routeId}/fares`, {
-      rules: [
-        { name: 'Diurna', startLocal: '06:30', endLocal: '21:00', amountCents: Number(p.day) },
-        { name: 'Nocturna', startLocal: '21:00', endLocal: '06:30', amountCents: Number(p.night) },
-      ],
-    }),
+  // Horario real de Taxi Ruta: diurna 06:30–20:59, nocturna 21:00 hasta el cierre (23:00); luego la ruta se cierra.
+  'admin.route.fares': async (e, p) => {
+    const close = String(p.close || '23:00');
+    const rules = [
+      { name: 'Diurna', startLocal: '06:30', endLocal: '21:00', amountCents: Number(p.day) },
+      { name: 'Nocturna', startLocal: '21:00', endLocal: close === '06:30' ? '06:30' : close, amountCents: Number(p.night) },
+    ];
+    const hours = close === '06:30' ? null : { start: '06:30', end: close };
+    // Si se amplía el horario, primero las tarifas; si se reduce, primero el horario (cada paso valida la cobertura).
+    const fares = await e.device.call('api', 'PUT', `/v1/admin/routes/${p.routeId}/fares`, { rules });
+    if (fares.status >= 400) {
+      await e.device.call('api', 'PUT', `/v1/admin/routes/${p.routeId}/service-hours`, { hours });
+      return e.device.call('api', 'PUT', `/v1/admin/routes/${p.routeId}/fares`, { rules });
+    }
+    await e.device.call('api', 'PUT', `/v1/admin/routes/${p.routeId}/service-hours`, { hours });
+    return fares;
+  },
   'admin.route.validate': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/validate`),
   'admin.route.publishRequest': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/publish-request`),
   'admin.route.decide': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/publish-decision`, { approve: p.approve === 'true' }),

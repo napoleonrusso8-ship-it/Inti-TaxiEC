@@ -80,16 +80,25 @@ export function RouteDetail({ routeId, vehicleType }: { routeId: string; vehicle
         <P muted>Toca tu parada de subida y luego la de bajada.</P>
         {dir.stops.map(stopButton)}
       </Card>
+      {route.serviceHours ? (
+        <Card style={route.open ? undefined : { borderColor: C.danger }}>
+          <P style={{ fontWeight: '700' }}>{route.open ? 'Horario de servicio' : 'Ruta cerrada'}</P>
+          <P>
+            {route.serviceHours.start} a {route.serviceHours.lastBoarding} (hora de Guayaquil)
+          </P>
+          <P muted>{route.open ? `Desde las ${route.serviceHours.end} la ruta se cierra: no se sube a nadie y las reservas pendientes se liberan.` : `Abre a las ${route.serviceHours.start}.`}</P>
+        </Card>
+      ) : null}
       <Card>
         <P style={{ fontWeight: '700' }}>Tarifas por persona</P>
         {route.fares.filter((f) => kind === 'all' || f.vehicleType === kind).map((f) => (
           <P key={`${f.vehicleType}-${f.name}`}>
-            {f.vehicleType === 'van' ? '🚐' : '🚕'} {f.name} ({f.from}–{f.to}): {money(f.amountCents)}
+            {f.vehicleType === 'van' ? '🚐' : '🚕'} {f.name} ({f.from}–{lastMinute(f.to)}): {money(f.amountCents)}
           </P>
         ))}
         <P muted>{route.fareNote}</P>
       </Card>
-      {from && to ? (
+      {from && to && route.open ? (
         <>
           <Card>
             <P style={{ fontWeight: '700' }}>Asientos: {seats}</P>
@@ -118,4 +127,11 @@ export function RouteDetail({ routeId, vehicleType }: { routeId: string; vehicle
       <ErrorText error={error} />
     </Screen>
   );
+}
+
+/** "21:00" → "20:59": la franja termina un minuto antes de la siguiente. */
+function lastMinute(hhmm: string) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = (h! * 60 + m! + 1439) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 }

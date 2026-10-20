@@ -1,7 +1,7 @@
 import { fareAt, type FareRule } from '@intitaxi/domain';
 import { validCedula } from '@intitaxi/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { adminSession, approvedDriver, completedTrip, freshIdentity, submittedDriver, waitFor } from '../src/flows.js';
+import { adminSession, approvedDriver, completedTrip, freshIdentity, submittedDriver, waitFor, r1AllDayForTests } from '../src/flows.js';
 import { Stack } from '../src/stack.js';
 
 const s = new Stack();
@@ -22,6 +22,7 @@ beforeAll(async () => {
   await s.start(['auth', 'api']);
   [reviewer, managerA, managerB, superAdmin] = (await Promise.all(['driver_reviewer', 'route_manager', 'route_manager', 'super_admin'].map((r) => adminSession(s, r)))) as [Admin, Admin, Admin, Admin];
   // Publica la Ruta 1 sembrada (con tarifas de taxi y furgoneta) siguiendo el flujo real del panel.
+  await r1AllDayForTests(s);
   const id = (await s.pool.query(`SELECT id FROM fixed_routes.routes WHERE code = 'R1'`)).rows[0].id;
   await managerA.web.call('api', 'POST', `/v1/admin/routes/${id}/validate`);
   await managerA.web.call('api', 'POST', `/v1/admin/routes/${id}/publish-request`);

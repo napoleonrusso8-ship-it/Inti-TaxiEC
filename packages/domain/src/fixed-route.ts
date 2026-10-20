@@ -14,6 +14,12 @@ export interface FareRule {
   priority: number;
 }
 
+/** Horario de servicio de una ruta (hora local, [inicio, fin)). Fuera de él la ruta está cerrada. `null` = 24 h. */
+export interface ServiceHours {
+  start: string;
+  end: string;
+}
+
 const secs = (hms: string) => {
   const [h, m, s] = hms.split(':').map(Number);
   return (h ?? 0) * 3600 + (m ?? 0) * 60 + (s ?? 0);
@@ -45,13 +51,22 @@ export function fareAt(rules: FareRule[], at: Date): FareRule | null {
   return candidates[0] ?? null;
 }
 
-/** Las franjas deben cubrir las 24 h sin huecos ni solapes (a igual prioridad). Se verifica por minuto. */
-export function validateFareCoverage(rules: FareRule[], onDate: string): { ok: boolean; gaps: string[]; overlaps: string[] } {
+/** ¿La ruta está en servicio en este instante? (Ruta 1: 06:30–23:00; desde las 23:00 se cierra.) */
+export function isOpen(hours: ServiceHours | null, at: Date): boolean {
+  return !hours || inWindow(localParts(at).seconds, secs(hours.start), secs(hours.end));
+}
+
+/**
+ * Las franjas deben cubrir TODO el horario de servicio (24 h si no hay horario) sin huecos ni solapes
+ * (a igual prioridad). Se verifica por minuto; las horas en que la ruta está cerrada no cuentan como hueco.
+ */
+export function validateFareCoverage(rules: FareRule[], onDate: string, hours: ServiceHours | null = null): { ok: boolean; gaps: string[]; overlaps: string[] } {
   const active = rules.filter((r) => r.validFrom <= onDate && (!r.validTo || r.validTo >= onDate));
   const gaps: number[] = [];
   const overlaps: number[] = [];
   const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   for (let m = 0; m < 1440; m++) {
+    if (hours && !inWindow(m * 60, secs(hours.start), secs(hours.end))) continue;
     const hit = active.filter((r) => inWindow(m * 60, secs(r.startLocal), secs(r.endLocal)));
     if (!hit.length) gaps.push(m);
     else {

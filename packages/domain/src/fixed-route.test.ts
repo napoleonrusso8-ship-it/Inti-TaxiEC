@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeStopOrder, decodePolyline, etaSeconds, fareAt, localParts, validateFareCoverage, type FareRule } from './fixed-route.js';
+import { analyzeStopOrder, decodePolyline, etaSeconds, fareAt, isOpen, localParts, validateFareCoverage, type FareRule } from './fixed-route.js';
 
 const RUTA1: FareRule[] = [
   { id: 'd', name: 'Diurna', startLocal: '06:30', endLocal: '21:00', amountCents: 300, validFrom: '2026-01-01', validTo: null, priority: 0 },
@@ -40,6 +40,24 @@ describe('Tarifa de Taxi Ruta (hora de Guayaquil)', () => {
     expect(gap.gaps).toEqual(['00:00–06:29', '21:00–23:59']);
     const overlap = validateFareCoverage([...RUTA1, { ...RUTA1[0]!, id: 'x' }], '2026-10-19');
     expect(overlap.overlaps.length).toBe(1);
+  });
+
+  it('horario de servicio 06:30–23:00: las horas cerradas no son huecos, pero sí lo es un hueco dentro del horario', () => {
+    const hours = { start: '06:30', end: '23:00' };
+    const real: FareRule[] = [RUTA1[0]!, { ...RUTA1[1]!, endLocal: '23:00' }];
+    expect(validateFareCoverage(real, '2026-10-19', hours)).toEqual({ ok: true, gaps: [], overlaps: [] });
+    expect(validateFareCoverage(real, '2026-10-19').ok).toBe(false);
+    expect(validateFareCoverage([RUTA1[0]!], '2026-10-19', hours).gaps).toEqual(['21:00–22:59']);
+  });
+
+  it('la ruta se cierra a las 23:00 y abre a las 06:30 (hora de Guayaquil)', () => {
+    const hours = { start: '06:30', end: '23:00' };
+    expect(isOpen(hours, gye('2026-10-19T06:29:59'))).toBe(false);
+    expect(isOpen(hours, gye('2026-10-19T06:30:00'))).toBe(true);
+    expect(isOpen(hours, gye('2026-10-19T20:59:59'))).toBe(true);
+    expect(isOpen(hours, gye('2026-10-19T22:59:59'))).toBe(true);
+    expect(isOpen(hours, gye('2026-10-19T23:00:00'))).toBe(false);
+    expect(isOpen(null, gye('2026-10-19T03:00:00'))).toBe(true);
   });
 });
 

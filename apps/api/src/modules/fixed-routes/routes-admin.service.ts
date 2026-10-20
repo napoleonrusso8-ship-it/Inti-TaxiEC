@@ -104,8 +104,9 @@ export class RoutesAdminService {
   /** Reemplaza las franjas tarifarias. Las anteriores se retiran (no se borran: los recibos las citan). */
   async setFares(routeId: string, rules: FareInput[], req: AppRequest, vehicleType: VehicleType = 'taxi') {
     const preview = rules.map((r, i) => ({ id: String(i), name: r.name, startLocal: r.startLocal, endLocal: r.endLocal, amountCents: r.amountCents, validFrom: r.validFrom ?? '2000-01-01', validTo: r.validTo ?? null, priority: r.priority ?? 0 }));
-    const coverage = validateFareCoverage(preview, localParts(new Date()).date);
-    if (!coverage.ok) throw new AppError(400, 'fare_coverage', `Las franjas deben cubrir las 24 h sin solaparse. Huecos: ${coverage.gaps.join(', ') || '—'}; solapes: ${coverage.overlaps.join(', ') || '—'}`);
+    const hours = await this.routes.serviceHours(routeId);
+    const coverage = validateFareCoverage(preview, localParts(new Date()).date, hours);
+    if (!coverage.ok) throw new AppError(400, 'fare_coverage', `Las franjas deben cubrir ${hours ? `el horario de servicio (${hours.start}–${hours.end})` : 'las 24 h'} sin solaparse. Huecos: ${coverage.gaps.join(', ') || '—'}; solapes: ${coverage.overlaps.join(', ') || '—'}`);
     await withTransaction(this.pool, async (c) => {
       await this.#editable(c, routeId);
       // Solo se reemplazan las tarifas del tipo de vehículo indicado (taxi o furgoneta).
@@ -121,15 +122,34 @@ export class RoutesAdminService {
     return { fares: await this.routes.rules(routeId), coverage };
   }
 
-  /** Cada tipo de vehículo que tenga tarifas debe cubrir las 24 h; al menos un tipo debe tener tarifas. */
+  /** Cada tipo de vehículo que tenga tarifas debe cubrir el horario de servicio (24 h si no hay); al menos un tipo debe tener tarifas. */
   async #coverage(routeId: string, c?: PoolClient) {
     const rules = await this.routes.rules(routeId, c ?? this.pool);
+    const hours = await this.routes.serviceHours(routeId, c ?? this.pool);
     const date = localParts(new Date()).date;
     const byType = Object.fromEntries(
-      (['taxi', 'van'] as const).filter((t) => rules.some((r) => r.vehicleType === t)).map((t) => [t, validateFareCoverage(rules.filter((r) => r.vehicleType === t), date)]),
+      (['taxi', 'van'] as const).filter((t) => rules.some((r) => r.vehicleType === t)).map((t) => [t, validateFareCoverage(rules.filter((r) => r.vehicleType === t), date, hours)]),
     );
     const types = Object.values(byType);
     return { ok: types.length > 0 && types.every((x) => x.ok), byType };
+  }
+
+  /**
+   * Horario de servicio (hora de Guayaquil, [inicio, fin)); `null` = 24 h. Fuera de él la ruta está cerrada.
+   * Las tarifas vigentes deben seguir cubriendo el nuevo horario.
+   */
+  async setServiceHours(routeId: string, hours: { start: string; end: string } | null, req: AppRequest) {
+    if (hours && hours.start === hours.end) throw new AppError(400, 'invalid_hours', 'La hora de inicio y la de cierre no pueden ser iguales');
+    await withTransaction(this.pool, async (c) => {
+      await this.#editable(c, routeId);
+      await c.query(`UPDATE fixed_routes.routes SET service_start_local = $2, service_end_local = $3 WHERE id = $1`, [routeId, hours?.start ?? null, hours?.end ?? null]);
+      const cov = await this.#coverage(routeId, c);
+      for (const [t, x] of Object.entries(cov.byType)) {
+        if (!x.ok) throw new AppError(400, 'fare_coverage', `Las tarifas de ${t === 'van' ? 'furgoneta' : 'taxi'} no cubren el nuevo horario. Huecos: ${x.gaps.join(', ') || '—'}`);
+      }
+      await this.audit.record({ action: 'route.service_hours_set', resourceType: 'route', resourceId: routeId, metadata: { hours: hours ? `${hours.start}-${hours.end}` : '24h' } }, req, c);
+    });
+    return this.routes.detail(routeId, true);
   }
 
   async setSchedules(routeId: string, schedules: { days: number[]; start: string; end: string; headwayMinutes: number }[], req: AppRequest) {

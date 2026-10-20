@@ -1,4 +1,4 @@
-import { fareAt, type FareRule } from '@intitaxi/domain';
+import { fareAt, localParts, type FareRule } from '@intitaxi/domain';
 import { validCedula } from '@intitaxi/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { adminSession, approvedDriver, freshIdentity, waitFor } from '../src/flows.js';
@@ -28,7 +28,7 @@ let routeId: string;
 let codeN = 100;
 let stopIds: string[];
 
-async function publishedRoute() {
+async function publishedRoute(hours?: { start: string; end: string }) {
   const code = `R${++codeN}`;
   const c = await managerA.web.call('api', 'POST', '/v1/admin/routes', { code, name: `Prueba ${code}`, corridor: 'Av. Francisco de Orellana' });
   if (c.status !== 201) throw new Error(`create ${c.status} ${JSON.stringify(c.body)}`);
@@ -36,6 +36,7 @@ async function publishedRoute() {
   const out = await managerA.web.call('api', 'PUT', `/v1/admin/routes/${id}/directions/outbound/stops`, { stops: STOPS });
   const ids = out.body.directions.find((d: { direction: string }) => d.direction === 'outbound').stops.map((x: { id: string }) => x.id);
   await managerA.web.call('api', 'PUT', `/v1/admin/routes/${id}/directions/inbound/stops`, { stops: [...STOPS].reverse().map((x, i) => ({ ...x, stopId: ids[STOPS.length - 1 - i] })) });
+  if (hours) await managerA.web.call('api', 'PUT', `/v1/admin/routes/${id}/service-hours`, { hours });
   await managerA.web.call('api', 'PUT', `/v1/admin/routes/${id}/fares`, { rules: DAY_NIGHT });
   await managerA.web.call('api', 'POST', `/v1/admin/routes/${id}/validate`);
   await managerA.web.call('api', 'POST', `/v1/admin/routes/${id}/publish-request`);
@@ -73,7 +74,11 @@ describe('Gestión de rutas (panel)', () => {
     const out = d.body.directions.find((x: { direction: string }) => x.direction === 'outbound');
     expect(out.stops.map((x: { name: string }) => x.name)).toEqual(['Villa Bonita', 'San Marino', 'Mall del Sol', 'City Mall', 'Riocentro Norte', 'Mall del Río', 'Parque Centenario', '9 de Octubre', 'Vélez', 'Chile y Colón', 'Bahía – Castillo']);
     expect(out.stops.every((x: { locationVerified: boolean }) => !x.locationVerified)).toBe(true);
-    expect(d.body.fares).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Diurna', from: '06:30', to: '21:00', amountCents: 300 }), expect.objectContaining({ name: 'Nocturna', from: '21:00', to: '06:30', amountCents: 400 })]));
+    expect(d.body.fares).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Diurna', from: '06:30', to: '21:00', amountCents: 300 }), expect.objectContaining({ name: 'Nocturna', from: '21:00', to: '23:00', amountCents: 400 })]));
+    // Horario real: diurna 06:30–20:59, nocturna 21:00–22:59; desde las 23:00 la ruta se cierra.
+    expect(d.body.serviceHours).toEqual({ start: '06:30', end: '23:00', lastBoarding: '22:59' });
+    const retired = await s.pool.query(`SELECT count(*)::int AS n FROM fixed_routes.fare_rules WHERE route_id = $1 AND end_local = '06:30' AND retired_at IS NOT NULL`, [r.rows[0].id]);
+    expect(retired.rows[0].n).toBe(2); // la nocturna anterior (taxi y furgoneta) se retira, no se borra
     // Un borrador no es visible para pasajeros
     const p = await s.loggedIn();
     expect((await p.d.call('api', 'GET', `/v1/routes/${r.rows[0].id}`)).status).toBe(404);
@@ -245,3 +250,65 @@ describe('Taxi Ruta: reserva, abordaje y cobro por persona', () => {
     expect(sos.body.call).toBe('tel:911');
   });
 });
+
+/** "HH:MM" de Guayaquil desplazado `min` minutos desde ahora. */
+const gyeAt = (min: number) => {
+  const [h, m] = localParts(new Date()).time.split(':').map(Number);
+  const t = (((h! * 60 + m! + min) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+
+describe('Horario de servicio de Taxi Ruta (la ruta se cierra)', () => {
+  it('las tarifas deben cubrir el horario de servicio; las horas cerradas no son huecos', async () => {
+    const c = await managerA.web.call('api', 'POST', '/v1/admin/routes', { code: `R${++codeN}`, name: 'Prueba horario', corridor: 'Av. Francisco de Orellana' });
+    const id = c.body.id as string;
+    expect((await managerA.web.call('api', 'PUT', `/v1/admin/routes/${id}/service-hours`, { hours: { start: '06:30', end: '23:00' } })).status).toBe(200);
+    const gap = await managerA.web.call('api', 'PUT', `/v1/admin/routes/${id}/fares`, { rules: [DAY_NIGHT[0]] });
+    expect(gap.status).toBe(400);
+    expect(gap.body.detail).toContain('21:00–22:59');
+    const ok = await managerA.web.call('api', 'PUT', `/v1/admin/routes/${id}/fares`, { rules: [DAY_NIGHT[0], { ...DAY_NIGHT[1], endLocal: '23:00' }] });
+    expect(ok.status).toBe(200);
+    // Ampliar el horario sin tarifa para las horas nuevas se rechaza
+    const wider = await managerA.web.call('api', 'PUT', `/v1/admin/routes/${id}/service-hours`, { hours: { start: '05:00', end: '23:00' } });
+    expect(wider.status).toBe(400);
+    expect(wider.body.title).toBe('fare_coverage');
+    const p = await s.loggedIn();
+    expect((await p.d.call('api', 'PUT', `/v1/admin/routes/${id}/service-hours`, { hours: null })).status).toBe(403);
+  });
+
+  it('fuera de horario: sin tarifa vigente, no se cotiza, no se reserva, no se sube a nadie, no se inicia recorrido y las reservas pendientes se liberan', async () => {
+    const r = await publishedRoute({ start: gyeAt(-60), end: gyeAt(60) });
+    const drv = await routeDriver(STOPS[0], r.id);
+    const p = await s.loggedIn();
+    const b = await d_book(p, drv.instanceId, r);
+    expect(b.status).toBe(201);
+    const pin = (await p.d.call('api', 'GET', `/v1/trips/${b.body.tripId}/pin`)).body.pin;
+
+    // Llega la hora de cierre (se mueve el horario para no esperar).
+    await s.pool.query(`UPDATE fixed_routes.routes SET service_start_local = $2, service_end_local = $3 WHERE id = $1`, [r.id, gyeAt(60), gyeAt(120)]);
+    const list = (await p.d.call('api', 'GET', '/v1/routes')).body.find((x: { id: string }) => x.id === r.id);
+    expect(list).toMatchObject({ open: false, currentFare: null, currentFares: { taxi: null, van: null } });
+    const q = await p.d.call('api', 'POST', `/v1/routes/${r.id}/quotes`, { direction: 'outbound', boardingStopId: r.stopIds[1], alightingStopId: r.stopIds[3], seats: 1 });
+    expect(q.status).toBe(409);
+    expect(q.body.title).toBe('route_closed');
+    expect(q.body.detail).toContain(`abre a las ${gyeAt(60)}`);
+    expect((await p.d.call('api', 'GET', `/v1/routes/${r.id}/vehicles?direction=outbound&stopId=${r.stopIds[1]}`)).body).toEqual([]);
+    const p2 = await s.loggedIn();
+    expect((await d_book(p2, drv.instanceId, r)).body.title).toBe('route_closed');
+    const board = await drv.d.call('api', 'POST', `/v1/driver/route-instances/${drv.instanceId}/board`, { bookingId: b.body.bookingId, pin });
+    expect(board.status).toBe(409);
+    expect(board.body.title).toBe('route_closed');
+    const other = await approvedDriver(s, reviewer.web);
+    await freshIdentity(s, other.d, other.doc);
+    await managerA.web.call('api', 'POST', `/v1/admin/routes/${r.id}/drivers`, { driverId: other.userId });
+    await other.d.call('api', 'POST', '/v1/driver/online', { vehicleId: other.vehicleId, location: STOPS[0] });
+    expect((await other.d.call('api', 'POST', `/v1/driver/routes/${r.id}/instances`, { direction: 'outbound', vehicleId: other.vehicleId })).body.title).toBe('route_closed');
+    // El barrido (cada 30 s) libera la reserva pendiente y sus asientos.
+    const view = await waitFor(() => p.d.call('api', 'GET', `/v1/routes/bookings/${b.body.bookingId}`), (v) => v.body.status === 'expired', 40_000);
+    expect(view.body.status).toBe('expired');
+    expect((await drv.d.call('api', 'GET', '/v1/driver/route-instances/current')).body.seatsTaken).toBe(0);
+  }, 60_000);
+});
+
+const d_book = (p: Awaited<ReturnType<typeof s.loggedIn>>, instanceId: string, r: { id: string; stopIds: string[] }) =>
+  p.d.call('api', 'POST', `/v1/routes/${r.id}/bookings`, { instanceId, direction: 'outbound', boardingStopId: r.stopIds[1], alightingStopId: r.stopIds[3], seats: 1, paymentMethod: 'cash' });

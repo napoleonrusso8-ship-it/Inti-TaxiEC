@@ -281,7 +281,7 @@ export const SECTIONS = [
     items: [
       { label: 'Rutas', action: 'admin.routes' },
       { label: 'Detalle (incluye borrador e informe)', action: 'admin.route', fields: [{ name: 'routeId', label: 'ID de la ruta' }] },
-      { label: 'Tarifas diurna / nocturna', action: 'admin.route.fares', hint: 'La ruta debe estar en borrador o pausada.', fields: [{ name: 'routeId', label: 'ID de la ruta' }, { name: 'day', label: 'Diurna 06:30–21:00 (centavos)', default: '300' }, { name: 'night', label: 'Nocturna 21:00–06:30 (centavos)', default: '400' }] },
+      { label: 'Tarifas diurna / nocturna', action: 'admin.route.fares', hint: 'La ruta debe estar en borrador o pausada.', fields: [{ name: 'routeId', label: 'ID de la ruta' }, { name: 'day', label: 'Diurna 06:30–20:59 (centavos)', default: '300' }, { name: 'night', label: 'Nocturna desde 21:00 (centavos)', default: '400' }, { name: 'close', label: 'Cierre de la ruta (HH:MM; 06:30 = 24 h)', default: '23:00' }] },
       { label: 'Validar con mapas', action: 'admin.route.validate', hint: 'Orden de paradas (informativo), polilínea y cobertura de tarifas.', fields: [{ name: 'routeId', label: 'ID de la ruta' }] },
       { label: 'Solicitar publicación', action: 'admin.route.publishRequest', fields: [{ name: 'routeId', label: 'ID de la ruta' }] },
       { label: 'Aprobar / rechazar publicación', action: 'admin.route.decide', hint: 'Debe hacerlo un admin distinto al que la solicitó.', fields: [{ name: 'routeId', label: 'ID de la ruta' }, { name: 'approve', label: 'Decisión', type: 'select', options: [{ value: 'true', label: 'Aprobar' }, { value: 'false', label: 'Rechazar' }] }] },

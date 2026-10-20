@@ -188,6 +188,13 @@ export class AdminRoutesController {
     return this.admin.setFares(id, i.rules, req, i.vehicleType);
   }
 
+  @Put(':id/service-hours')
+  @AdminWrite()
+  serviceHours(@Req() req: AppRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const i = parseInput(z.object({ hours: z.object({ start: hhmm, end: hhmm }).nullable() }), body);
+    return this.admin.setServiceHours(id, i.hours, req);
+  }
+
   @Put(':id/schedules')
   @AdminWrite()
   schedules(@Req() req: AppRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
