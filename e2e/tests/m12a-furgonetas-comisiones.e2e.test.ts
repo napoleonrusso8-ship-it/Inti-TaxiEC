@@ -35,11 +35,15 @@ afterAll(() => s.stop());
 
 describe('Registro de furgonetas', () => {
   it('asientos según el tipo: taxi 1–4, furgoneta 5–15', async () => {
-    const drv = await verifiedDriverApplicant();
-    const add = (seats: number, vehicleType: string) => drv.d.call('api', 'POST', '/v1/driver/vehicles', { plate: `GZ${String.fromCharCode(65 + Math.floor(Math.random() * 26))}-${1000 + Math.floor(Math.random() * 8999)}`, make: 'Hyundai', model: 'H1', year: 2022, color: 'Blanco', seats, vehicleType });
-    expect((await add(6, 'taxi')).body.title).toBe('invalid_seats');
-    expect((await add(3, 'van')).body.title).toBe('invalid_seats');
-    expect((await add(12, 'van')).status).toBe(201);
+    const taxi = await verifiedDriverApplicant();
+    const van = await verifiedDriverApplicant('van_owner');
+    const add = (u: { d: typeof taxi.d }, seats: number, vehicleType: string) => u.d.call('api', 'POST', '/v1/driver/vehicles', { plate: `GZ${String.fromCharCode(65 + Math.floor(Math.random() * 26))}-${1000 + Math.floor(Math.random() * 8999)}`, make: 'Hyundai', model: 'H1', year: 2022, color: 'Blanco', seats, vehicleType });
+    expect((await add(taxi, 6, 'taxi')).body.title).toBe('invalid_seats');
+    expect((await add(van, 3, 'van')).body.title).toBe('invalid_seats');
+    expect((await add(van, 12, 'van')).status).toBe(201);
+    // Cada tipo de socio registra solo su tipo de vehículo.
+    expect((await add(taxi, 12, 'van')).body.title).toBe('vehicle_type_not_allowed');
+    expect((await add(van, 4, 'taxi')).body.title).toBe('vehicle_type_not_allowed');
   });
 
   it('el revisor debe confirmar los asientos de la matrícula; si no coinciden, no se aprueba', async () => {
@@ -143,9 +147,9 @@ describe('Comisiones', () => {
 });
 
 /** Conductor con KYC y solicitud iniciada (sin vehículo). */
-async function verifiedDriverApplicant() {
+async function verifiedDriverApplicant(partnerKind = 'taxi_driver') {
   const { verifiedUser } = await import('../src/flows.js');
   const u = await verifiedUser(s, 'driver', validCedula());
-  await u.d.call('api', 'POST', '/v1/driver/application', { licenseNumber: `L${u.doc}`, licenseCategory: 'C', licenseExpiresOn: '2029-12-31' });
+  await u.d.call('api', 'POST', '/v1/driver/application', { partnerKind, licenseNumber: `L${u.doc}`, licenseCategory: 'C', licenseExpiresOn: '2029-12-31' });
   return u;
 }

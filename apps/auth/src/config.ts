@@ -15,10 +15,11 @@ const schema = z
     CLIENT_IDS: csv.default('intitaxi-passenger,intitaxi-driver,intitaxi-admin'),
 
     ATTESTATION_MODE: z.enum(['enforce', 'dev']).default('enforce'),
-    ANDROID_PACKAGE_NAMES: csv.default('ec.intitaxi.passenger,ec.intitaxi.driver'),
+    ANDROID_PACKAGE_NAMES: csv.default('ec.intitaxi.app,ec.intitaxi.passenger,ec.intitaxi.driver'),
     ANDROID_CERT_SHA256: csv.default(''),
-    /** Paquetes donde se tolera integridad básica (Android rooteado / no certificado) con señal de riesgo. */
-    PLAY_INTEGRITY_ALLOW_BASIC_PACKAGES: csv.default('ec.intitaxi.passenger'),
+    /** Paquetes donde se tolera integridad básica (Android rooteado / no certificado) con señal de riesgo.
+     *  En la app única (ec.intitaxi.app) eso vale solo para viajar: el cliente de socio exige integridad completa (AttestationGuard). */
+    PLAY_INTEGRITY_ALLOW_BASIC_PACKAGES: csv.default('ec.intitaxi.app,ec.intitaxi.passenger'),
     PLAY_INTEGRITY_CREDENTIALS_FILE: z.string().optional(),
     /** App Attest: "<TEAMID>.<bundle id>" separados por comas. */
     APP_ATTEST_APP_IDS: csv.default(''),

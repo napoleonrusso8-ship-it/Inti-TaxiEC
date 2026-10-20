@@ -20,6 +20,8 @@ export type Fetch = (url: string, init: { method: string; headers: Record<string
 }>;
 
 const REFRESH_KEY = 'intitaxi.refresh_token';
+export const TOKEN_EXCHANGE_GRANT = 'urn:ietf:params:oauth:grant-type:token-exchange';
+const ACCESS_TOKEN_TYPE = 'urn:ietf:params:oauth:token-type:access_token';
 
 /**
  * Gestiona el ciclo de vida de los tokens en el cliente:
@@ -34,7 +36,11 @@ export class TokenManager {
   #refreshing: Promise<string> | undefined;
 
   constructor(
-    private readonly cfg: { tokenEndpoint: string; clientId: string; skewSeconds?: number },
+    /**
+     * `refreshTokenKey`: clave en el almacenamiento seguro. En la app única hay un TokenManager por cliente
+     * (pasajero y socio): cada uno debe usar su propia clave para no pisar el refresh token del otro.
+     */
+    private readonly cfg: { tokenEndpoint: string; clientId: string; skewSeconds?: number; refreshTokenKey?: string },
     private readonly signer: DpopSigner,
     private readonly store: SecureStore,
     private readonly fetchFn: Fetch,
@@ -43,6 +49,23 @@ export class TokenManager {
 
   async exchangeCode(code: string, codeVerifier: string): Promise<void> {
     await this.#tokenRequest({ grant_type: 'authorization_code', code, code_verifier: codeVerifier, client_id: this.cfg.clientId });
+  }
+
+  /**
+   * Token exchange (RFC 8693): con el token de acceso de OTRO cliente de la app única (p. ej. el de pasajero)
+   * obtiene una sesión propia para `clientId` sin otro SMS. Debe usar la MISMA clave DPoP que ese token.
+   */
+  async exchangeToken(subjectAccessToken: string): Promise<void> {
+    await this.#tokenRequest({
+      grant_type: TOKEN_EXCHANGE_GRANT,
+      subject_token: subjectAccessToken,
+      subject_token_type: ACCESS_TOKEN_TYPE,
+      client_id: this.cfg.clientId,
+    });
+  }
+
+  get #key() {
+    return this.cfg.refreshTokenKey ?? REFRESH_KEY;
   }
 
   async getAccessToken(nowMs = Date.now()): Promise<string> {
@@ -63,11 +86,11 @@ export class TokenManager {
   async logout(): Promise<void> {
     this.#accessToken = undefined;
     this.#expiresAt = 0;
-    await this.store.delete(REFRESH_KEY);
+    await this.store.delete(this.#key);
   }
 
   async #refresh(): Promise<string> {
-    const rt = await this.store.get(REFRESH_KEY);
+    const rt = await this.store.get(this.#key);
     if (!rt) {
       this.onSessionEnded('no_refresh_token');
       throw new Error('Sesión no iniciada');
@@ -94,7 +117,7 @@ export class TokenManager {
       throw new Error(`Error al obtener tokens: ${body.error ?? res.status}`);
     }
     // Guardar primero el nuevo refresh token: si la app muere aquí, el siguiente arranque usa el bueno.
-    await this.store.set(REFRESH_KEY, body.refresh_token);
+    await this.store.set(this.#key, body.refresh_token);
     this.#accessToken = body.access_token;
     this.#expiresAt = Date.now() + (body.expires_in ?? 0) * 1000;
   }

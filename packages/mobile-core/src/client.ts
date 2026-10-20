@@ -4,7 +4,7 @@ export type ServiceName = 'auth' | 'api' | 'sos' | 'realtime';
 
 export interface ClientConfig {
   services: Record<ServiceName, string>;
-  /** ec.intitaxi.passenger / ec.intitaxi.driver */
+  /** ec.intitaxi.app (app única de pasajeros y socios) */
   appId: string;
   clientId: 'intitaxi-passenger' | 'intitaxi-driver';
 }
@@ -163,6 +163,17 @@ export class ApiClient {
     const verifier = createCodeVerifier();
     const v = await this.call<{ code: string }>('auth', 'POST', '/v1/auth/passkeys/authentication/verify', { flowId: o.flowId, response: await getAssertion(o.options), codeChallenge: await codeChallengeS256(verifier), codeChallengeMethod: 'S256' }, { auth: false });
     await this.tokens.exchangeCode(v.code, verifier);
+    this.#loggedIn = true;
+  }
+
+  /**
+   * Modo conductor/socio en la misma app: obtiene una sesión de este cliente (p. ej. intitaxi-driver)
+   * a partir de la sesión de `other` (intitaxi-passenger), sin otro SMS. Intercambio de tokens (RFC 8693)
+   * con la misma clave DPoP del teléfono: no eleva el nivel de autenticación.
+   */
+  async linkFrom(other: ApiClient): Promise<void> {
+    await this.attest();
+    await this.tokens.exchangeToken(await other.tokens.getAccessToken());
     this.#loggedIn = true;
   }
 

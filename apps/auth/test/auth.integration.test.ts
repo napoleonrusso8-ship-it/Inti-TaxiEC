@@ -257,6 +257,93 @@ describe('Rotación de refresh tokens', () => {
   });
 });
 
+describe('Token exchange (RFC 8693): app única pasajero → socio', () => {
+  const EXCHANGE = 'urn:ietf:params:oauth:grant-type:token-exchange';
+  const AT_TYPE = 'urn:ietf:params:oauth:token-type:access_token';
+  const exchangeTo = (d: TestDevice, subject: string, clientId = 'intitaxi-driver') =>
+    d.token({ grant_type: EXCHANGE, subject_token: subject, subject_token_type: AT_TYPE, client_id: clientId });
+  const claims = (at: string) => JSON.parse(Buffer.from(at.split('.')[1]!, 'base64url').toString());
+
+  async function passenger() {
+    const d = await TestDevice.create(h);
+    d.appId = 'ec.intitaxi.app';
+    await d.attest();
+    const p = newPhone();
+    await d.login(p.local, p.e164);
+    return d;
+  }
+
+  it('crea una sesión nueva del cliente socio en el mismo dispositivo, sin elevar acr/amr/auth_time', async () => {
+    const d = await passenger();
+    const before = claims(d.accessToken);
+    const r = await exchangeTo(d, d.accessToken);
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ token_type: 'DPoP', expires_in: 600 });
+    expect(r.body.refresh_token).toBeTruthy();
+    const after = claims(r.body.access_token);
+    expect(after).toMatchObject({ sub: before.sub, did: before.did, client_id: 'intitaxi-driver', acr: before.acr, amr: before.amr, auth_time: before.auth_time, cnf: before.cnf });
+    expect(after.sid).not.toBe(before.sid);
+    // El nuevo token funciona con la misma clave DPoP y la sesión rota su refresh token como cualquier otra.
+    expect((await d.authed('get', '/v1/me', undefined, r.body.access_token)).status).toBe(200);
+    const rot = await d.token({ grant_type: 'refresh_token', refresh_token: r.body.refresh_token, client_id: 'intitaxi-driver' });
+    expect(rot.status).toBe(200);
+    const { rows } = await h.pool.query(`SELECT client_id, expires_at - created_at AS ttl FROM identity.sessions WHERE id = $1`, [after.sid]);
+    expect(rows[0].client_id).toBe('intitaxi-driver');
+    expect(rows[0].ttl.days).toBe(30);
+    const audit = await h.pool.query(`SELECT metadata FROM audit.audit_log WHERE action = 'session.client_switch' AND outcome = 'success' AND resource_id = $1`, [after.sid]);
+    expect(audit.rows[0].metadata).toMatchObject({ from: 'intitaxi-passenger', to: 'intitaxi-driver' });
+  });
+
+  it('rechaza el canje con otra clave DPoP (token robado)', async () => {
+    const d = await passenger();
+    const thief = await TestDevice.create(h);
+    expect((await exchangeTo(thief, d.accessToken)).body.error).toBe('invalid_grant');
+  });
+
+  it('rechaza sesiones revocadas, usuarios suspendidos y tokens que no emitió este servidor', async () => {
+    const d = await passenger();
+    const at = d.accessToken;
+    expect((await d.authed('post', '/v1/auth/logout')).status).toBeLessThan(300);
+    expect((await exchangeTo(d, at)).body.error).toBe('invalid_grant');
+    const e = await passenger();
+    const me = await e.authed('get', '/v1/me');
+    await h.pool.query(`UPDATE identity.users SET status = 'suspended' WHERE id = $1`, [me.body.id]);
+    expect((await exchangeTo(e, e.accessToken)).body.error).toBe('invalid_grant');
+    const forged = await e.signJws({ sub: me.body.id, sid: 'x', cnf: { jkt: 'x' } });
+    expect((await exchangeTo(e, forged)).body.error).toBe('invalid_grant');
+  });
+
+  it('solo entre clientes móviles distintos', async () => {
+    const d = await passenger();
+    expect((await exchangeTo(d, d.accessToken, 'intitaxi-passenger')).body.error).toBe('invalid_target');
+    expect((await exchangeTo(d, d.accessToken, 'intitaxi-admin')).body.error).toBe('invalid_target');
+    expect((await exchangeTo(d, d.accessToken, 'evil')).status).toBe(401);
+    expect((await d.token({ grant_type: EXCHANGE, subject_token: d.accessToken, subject_token_type: 'urn:ietf:params:oauth:token-type:refresh_token', client_id: 'intitaxi-driver' })).body.error).toBe('invalid_request');
+  });
+
+  it('cambiar otra vez al mismo cliente cierra la sesión anterior de ese cliente en el dispositivo', async () => {
+    const d = await passenger();
+    const first = await exchangeTo(d, d.accessToken);
+    const second = await exchangeTo(d, d.accessToken);
+    expect(second.status).toBe(200);
+    expect((await d.authed('get', '/v1/me', undefined, first.body.access_token)).status).toBe(401);
+    expect((await d.authed('get', '/v1/me', undefined, second.body.access_token)).status).toBe(200);
+  });
+
+  it('limita los cambios de cliente por usuario', async () => {
+    const d = await passenger();
+    const codes: number[] = [];
+    for (let i = 0; i < 11; i++) codes.push((await exchangeTo(d, d.accessToken)).status);
+    expect(codes.slice(0, 10).every((c) => c === 200)).toBe(true);
+    expect(codes[10]).toBe(429);
+  });
+
+  it('se anuncia en los metadatos del servidor', async () => {
+    const m = await h.http.get('/.well-known/oauth-authorization-server').expect(200);
+    expect(m.body.grant_types_supported).toContain(EXCHANGE);
+  });
+});
+
 describe('Sesiones y autorización a nivel de objeto', () => {
   it('un usuario no puede cerrar la sesión de otro (IDOR) y recibe 404', async () => {
     const alice = await TestDevice.create(h);

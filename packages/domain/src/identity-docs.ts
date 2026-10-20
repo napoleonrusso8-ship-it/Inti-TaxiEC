@@ -28,3 +28,15 @@ export function normalizePersonName(input: string): string | null {
   const n = input.trim().replace(/\s+/g, ' ');
   return /^[\p{L}][\p{L} '’-]{0,59}$/u.test(n) ? n : null;
 }
+
+/**
+ * RUC de Ecuador (forma): 13 dígitos, provincia 01–24 (o 30) en los dos primeros y establecimiento "001" al final.
+ * No comprueba el dígito verificador ni que el contribuyente exista o esté activo en el SRI: eso lo verifica
+ * una persona del equipo con el certificado del RUC (documento `company_ruc`).
+ */
+export function validRuc(input: string): boolean {
+  const r = input.trim();
+  if (!/^\d{13}$/.test(r) || !r.endsWith('001')) return false;
+  const province = Number(r.slice(0, 2));
+  return (province >= 1 && province <= 24) || province === 30;
+}

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { SigningKeys } from '../../common/signing-keys.js';
 import type { AppConfig } from '../../config.js';
 import { CONFIG } from '../../tokens.js';
-import { TokenService } from './token.service.js';
+import { TOKEN_EXCHANGE_GRANT, TokenService } from './token.service.js';
 
 const TokenBody = z.discriminatedUnion('grant_type', [
   z.object({
@@ -18,7 +18,15 @@ const TokenBody = z.discriminatedUnion('grant_type', [
     refresh_token: z.string().min(20).max(200),
     client_id: z.string().max(100),
   }),
+  // RFC 8693: la app única cambia de cliente (pasajero → socio) sin otro SMS.
+  z.object({
+    grant_type: z.literal(TOKEN_EXCHANGE_GRANT),
+    subject_token: z.string().min(20).max(4096),
+    subject_token_type: z.literal('urn:ietf:params:oauth:token-type:access_token'),
+    client_id: z.string().max(100),
+  }),
 ]);
+const KNOWN_GRANTS: unknown[] = ['authorization_code', 'refresh_token', TOKEN_EXCHANGE_GRANT];
 
 @Controller()
 export class TokenController {
@@ -31,6 +39,7 @@ export class TokenController {
   /**
    * Endpoint de tokens (OAuth 2.1). Clientes públicos (apps nativas): PKCE obligatorio,
    * tokens ligados a DPoP y, para el canje del código, atestación de la app.
+   * Token exchange (RFC 8693): solo entre clientes móviles, en el mismo dispositivo y con la misma clave DPoP.
    */
   @Post('oauth/token')
   @HttpCode(200)
@@ -40,12 +49,15 @@ export class TokenController {
     const parsed = TokenBody.safeParse(body);
     if (!parsed.success) {
       const gt = (body as { grant_type?: unknown } | undefined)?.grant_type;
-      throw new OAuthError(gt === 'authorization_code' || gt === 'refresh_token' ? 'invalid_request' : 'unsupported_grant_type');
+      throw new OAuthError(KNOWN_GRANTS.includes(gt) ? 'invalid_request' : 'unsupported_grant_type');
     }
     const input = parsed.data;
     const jkt = req.dpop!.jkt;
     if (input.grant_type === 'authorization_code') {
       return this.tokens.exchangeCode({ code: input.code, codeVerifier: input.code_verifier, clientId: input.client_id, jkt }, req);
+    }
+    if (input.grant_type === TOKEN_EXCHANGE_GRANT) {
+      return this.tokens.exchangeToken({ subjectToken: input.subject_token, clientId: input.client_id, jkt }, req);
     }
     return this.tokens.refresh({ refreshToken: input.refresh_token, clientId: input.client_id, jkt }, req);
   }
@@ -74,7 +86,7 @@ export class TokenController {
       token_endpoint: `${base}/oauth/token`,
       revocation_endpoint: `${base}/oauth/revoke`,
       jwks_uri: `${base}/jwks`,
-      grant_types_supported: ['authorization_code', 'refresh_token'],
+      grant_types_supported: ['authorization_code', 'refresh_token', TOKEN_EXCHANGE_GRANT],
       code_challenge_methods_supported: ['S256'],
       token_endpoint_auth_methods_supported: ['none'],
       dpop_signing_alg_values_supported: ['ES256', 'EdDSA'],

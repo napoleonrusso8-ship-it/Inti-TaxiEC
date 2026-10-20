@@ -9,7 +9,9 @@ import { sha256Of, type StoragePort } from '../../infra/storage.js';
 import { BLIND_INDEX, CONFIG, FIELD_CIPHER, PG_POOL, STORAGE } from '../../tokens.js';
 import { SanctionsService } from '../trust/sanctions.service.js';
 import { KycService } from '../kyc/kyc.service.js';
-import { eligibilityIssues, normalizePlate, todayInGuayaquil, type DocState } from './eligibility.js';
+import { validRuc } from '@intitaxi/domain';
+import type { ApplicationInput } from './drivers.controller.js';
+import { ALLOWED_VEHICLE_TYPES, eligibilityIssues, normalizePlate, requiredDocs, todayInGuayaquil, type DocState, type PartnerKind } from './eligibility.js';
 
 export interface DocumentRow {
   id: string;
@@ -29,6 +31,16 @@ export interface DocumentRow {
 }
 
 const licenseAad = (userId: string) => `drivers.profiles.license_number:${userId}`;
+const rucAad = (userId: string) => `drivers.profiles.ruc:${userId}`;
+
+/** Nombre legible de cada tipo de socio (mensajes al usuario). */
+export const PARTNER_KIND_LABEL: Record<PartnerKind, string> = {
+  taxi_driver: 'conductor de taxi',
+  route_taxi_owner: 'dueño de taxi amarillo (Taxi Ruta)',
+  van_owner: 'dueño de furgoneta (Taxi Ruta)',
+  rental_company: 'empresa de alquiler de autos',
+  tow_operator: 'operador de grúa',
+};
 
 @Injectable()
 export class DriversService {
@@ -44,32 +56,52 @@ export class DriversService {
     @Inject(SanctionsService) private readonly sanctions: SanctionsService,
   ) {}
 
-  async apply(userId: string, input: { licenseNumber: string; licenseCategory: string; licenseExpiresOn: string }, req: AppRequest) {
+  /** Solicitud de socio (cualquier tipo). Siempre exige la identidad verificada de quien la envía. */
+  async apply(userId: string, input: ApplicationInput, req: AppRequest) {
     if (!(await this.kyc.isApproved(userId))) throw new AppError(409, 'kyc_required', 'Primero verifica tu identidad');
-    if (input.licenseExpiresOn < todayInGuayaquil()) throw new AppError(400, 'license_expired', 'La licencia está vencida');
-    const license = input.licenseNumber.replace(/[\s-]/g, '').toUpperCase();
-    const hmac = this.bidx.compute('driver_license', license);
+    const kind = input.partnerKind;
+    // Lo de la empresa (razón social y RUC) o lo de la licencia; el resto queda en NULL.
+    let license: { enc: Buffer; hmac: Buffer; masked: string; category: string; expiresOn: string } | null = null;
+    let company: { name: string; enc: Buffer; hmac: Buffer; masked: string } | null = null;
+    if (kind === 'rental_company') {
+      const ruc = input.company!.ruc.replace(/\s/g, '');
+      if (!validRuc(ruc)) throw new AppError(400, 'invalid_ruc', 'RUC inválido: 13 dígitos y termina en 001');
+      company = { name: input.company!.businessName, enc: await this.cipher.encrypt(ruc, rucAad(userId)), hmac: this.bidx.compute('company_ruc', ruc), masked: maskDocument(ruc) };
+    } else {
+      if (input.licenseExpiresOn! < todayInGuayaquil()) throw new AppError(400, 'license_expired', 'La licencia está vencida');
+      const number = input.licenseNumber!.replace(/[\s-]/g, '').toUpperCase();
+      license = { enc: await this.cipher.encrypt(number, licenseAad(userId)), hmac: this.bidx.compute('driver_license', number), masked: maskDocument(number), category: input.licenseCategory!, expiresOn: input.licenseExpiresOn! };
+    }
     try {
       await this.pool.query(
-        `INSERT INTO drivers.profiles (user_id, license_number_enc, license_number_hmac, license_number_masked, license_category, license_expires_on)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (user_id) DO UPDATE SET license_number_enc = EXCLUDED.license_number_enc, license_number_hmac = EXCLUDED.license_number_hmac,
+        `INSERT INTO drivers.profiles (user_id, partner_kind, license_number_enc, license_number_hmac, license_number_masked, license_category, license_expires_on, business_name, ruc_enc, ruc_hmac, ruc_masked)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT (user_id) DO UPDATE SET partner_kind = EXCLUDED.partner_kind, license_number_enc = EXCLUDED.license_number_enc, license_number_hmac = EXCLUDED.license_number_hmac,
            license_number_masked = EXCLUDED.license_number_masked, license_category = EXCLUDED.license_category,
-           license_expires_on = EXCLUDED.license_expires_on, status = 'applicant', updated_at = now()
+           license_expires_on = EXCLUDED.license_expires_on, business_name = EXCLUDED.business_name, ruc_enc = EXCLUDED.ruc_enc,
+           ruc_hmac = EXCLUDED.ruc_hmac, ruc_masked = EXCLUDED.ruc_masked, status = 'applicant', updated_at = now()
          WHERE drivers.profiles.status IN ('applicant', 'rejected')`,
-        [userId, await this.cipher.encrypt(license, licenseAad(userId)), hmac, maskDocument(license), input.licenseCategory, input.licenseExpiresOn],
+        [userId, kind, license?.enc ?? null, license?.hmac ?? null, license?.masked ?? null, license?.category ?? null, license?.expiresOn ?? null,
+          company?.name ?? null, company?.enc ?? null, company?.hmac ?? null, company?.masked ?? null],
       );
     } catch (e) {
-      if ((e as { code?: string }).code === '23505') throw new AppError(409, 'license_in_use', 'Esa licencia ya está registrada en otra cuenta');
+      const err = e as { code?: string; constraint?: string };
+      if (err.code === '23505' && err.constraint?.includes('ruc')) throw new AppError(409, 'ruc_in_use', 'Ese RUC ya está registrado en otra cuenta');
+      if (err.code === '23505') throw new AppError(409, 'license_in_use', 'Esa licencia ya está registrada en otra cuenta');
       throw e;
     }
-    await this.audit.record({ action: 'driver.apply', resourceType: 'driver', resourceId: userId }, req);
+    // Sin el RUC ni la licencia en la auditoría: solo el tipo de socio.
+    await this.audit.record({ action: 'driver.apply', resourceType: 'driver', resourceId: userId, metadata: { partnerKind: kind } }, req);
     return this.view(userId);
   }
 
   async #profile(userId: string) {
-    const { rows } = await this.pool.query<{ user_id: string; status: string; license_number_masked: string; license_category: string; license_expires_on: string; decision_reason: string | null; risk_flags: string[] }>(
-      `SELECT user_id, status, license_number_masked, license_category, to_char(license_expires_on, 'YYYY-MM-DD') AS license_expires_on, decision_reason, risk_flags
+    const { rows } = await this.pool.query<{
+      user_id: string; status: string; partner_kind: PartnerKind; license_number_masked: string | null; license_category: string | null; license_expires_on: string | null;
+      business_name: string | null; ruc_masked: string | null; decision_reason: string | null; risk_flags: string[];
+    }>(
+      `SELECT user_id, status, partner_kind, license_number_masked, license_category, to_char(license_expires_on, 'YYYY-MM-DD') AS license_expires_on,
+         business_name, ruc_masked, decision_reason, risk_flags
        FROM drivers.profiles WHERE user_id = $1`,
       [userId],
     );
@@ -85,6 +117,10 @@ export class DriversService {
   async addVehicle(userId: string, v: { plate: string; make: string; model: string; year: number; color: string; seats: number; vehicleType: 'taxi' | 'van' | 'tow' | 'rental'; rentalCategory?: string }, req: AppRequest) {
     const profile = await this.requireProfile(userId);
     if (profile.status === 'suspended') throw new AppError(403, 'suspended', 'Cuenta suspendida');
+    // Cada tipo de socio registra solo su tipo de vehículo (p. ej. el dueño de furgoneta, furgonetas).
+    if (!ALLOWED_VEHICLE_TYPES[profile.partner_kind].includes(v.vehicleType)) {
+      throw new AppError(400, 'vehicle_type_not_allowed', `Como ${PARTNER_KIND_LABEL[profile.partner_kind]} puedes registrar: ${ALLOWED_VEHICLE_TYPES[profile.partner_kind].join(', ')}`);
+    }
     const plate = normalizePlate(v.plate);
     if (!plate) throw new AppError(400, 'invalid_plate', 'Placa inválida (formato AAA-1234)');
     const minYear = new Date().getFullYear() - this.config.VEHICLE_MAX_AGE_YEARS;
@@ -113,6 +149,8 @@ export class DriversService {
     if (profile.status === 'suspended') throw new AppError(403, 'suspended', 'Cuenta suspendida');
     const rl = await this.limiter.hit(`doc-upload:${userId}`, 30, 86400);
     if (!rl.allowed) throw tooManyRequests(rl.retryAfterSeconds);
+    const required = requiredDocs(profile.partner_kind);
+    if (![...required.personal, ...required.vehicle].includes(d.type)) throw new AppError(400, 'document_type_not_allowed', `Ese documento no se pide a un ${PARTNER_KIND_LABEL[profile.partner_kind]}`);
     const needsVehicle = d.type === 'registration' || d.type === 'insurance';
     if (needsVehicle !== !!d.vehicleId) throw new AppError(400, 'invalid_request', needsVehicle ? 'Indica el vehículo' : 'Este documento no es de un vehículo');
     if (d.vehicleId) {
@@ -213,8 +251,9 @@ export class DriversService {
         uploadStatus: d.upload_status,
         expiresOn: d.expires_on,
       }));
+    const vehicles = (await this.vehicles(userId)).map((v) => ({ id: v.id, status: v.status, vehicleType: v.vehicle_type }));
     const issues = eligibilityIssues(
-      { today: todayInGuayaquil(), kycApproved: await this.kyc.isApproved(userId), profileStatus: p.status, licenseExpiresOn: p.license_expires_on, vehicles: await this.vehicles(userId), docs },
+      { today: todayInGuayaquil(), kycApproved: await this.kyc.isApproved(userId), profileStatus: p.status, partnerKind: p.partner_kind, licenseExpiresOn: p.license_expires_on, vehicles, docs },
       { forApproval: opts.forApproval },
     );
     // Sanción vigente por un reporte comprobado (suspensión o expulsión).
@@ -225,15 +264,21 @@ export class DriversService {
 
   async view(userId: string) {
     const p = await this.requireProfile(userId);
+    // Solo datos enmascarados: nunca el número completo de licencia ni el RUC.
     return {
       status: p.status,
-      license: { number: p.license_number_masked, category: p.license_category, expiresOn: p.license_expires_on },
+      partnerKind: p.partner_kind,
+      company: p.business_name ? { businessName: p.business_name, rucMasked: p.ruc_masked } : null,
+      allowedVehicleTypes: [...ALLOWED_VEHICLE_TYPES[p.partner_kind]],
+      requiredDocs: requiredDocs(p.partner_kind),
+      license: p.license_number_masked ? { number: p.license_number_masked, category: p.license_category, expiresOn: p.license_expires_on } : null,
       decisionReason: p.decision_reason,
       vehicles: await this.vehicles(userId),
       documents: (await this.documents(userId)).map((d) => ({
         id: d.id, type: d.type, vehicleId: d.vehicle_id, uploadStatus: d.upload_status, scanStatus: d.scan_status, reviewStatus: d.review_status, expiresOn: d.expires_on, rejectionReason: d.rejection_reason,
       })),
-      issues: p.status === 'approved' ? await this.eligibility(userId) : undefined,
+      // Mientras arma o espera la revisión: lo que falta para aprobarse. Después: lo que le impide operar.
+      issues: await this.eligibility(userId, { forApproval: ['applicant', 'under_review'].includes(p.status) }),
     };
   }
 
@@ -241,7 +286,8 @@ export class DriversService {
 
   async queue(status: string) {
     const { rows } = await this.pool.query(
-      `SELECT user_id AS "driverId", status, license_category AS "licenseCategory", submitted_at AS "submittedAt" FROM drivers.profiles WHERE status = $1 ORDER BY submitted_at NULLS LAST LIMIT 100`,
+      `SELECT user_id AS "driverId", status, partner_kind AS "partnerKind", business_name AS "businessName", license_category AS "licenseCategory", submitted_at AS "submittedAt"
+       FROM drivers.profiles WHERE status = $1 ORDER BY submitted_at NULLS LAST LIMIT 100`,
       [status],
     );
     return rows;

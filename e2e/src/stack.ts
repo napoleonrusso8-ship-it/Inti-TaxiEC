@@ -122,10 +122,11 @@ export class Stack {
     await this.pool?.end();
   }
 
-  device(role: 'passenger' | 'driver' = 'passenger', integrity: Integrity = 'ok') {
+  /** `appId`: por omisión la app de cada rol; 'ec.intitaxi.app' es la app única (pasajero + socio). */
+  device(role: 'passenger' | 'driver' = 'passenger', integrity: Integrity = 'ok', appId?: string) {
     return SimDevice.create({
       services: this.urls,
-      appId: role === 'driver' ? 'ec.intitaxi.driver' : 'ec.intitaxi.passenger',
+      appId: appId ?? (role === 'driver' ? 'ec.intitaxi.driver' : 'ec.intitaxi.passenger'),
       clientId: role === 'driver' ? 'intitaxi-driver' : 'intitaxi-passenger',
       integrity,
     });
@@ -147,8 +148,8 @@ export class Stack {
   }
 
   /** Dispositivo con sesión iniciada por OTP. */
-  async loggedIn(role: 'passenger' | 'driver' = 'passenger', integrity: Integrity = 'ok') {
-    const d = await this.device(role, integrity);
+  async loggedIn(role: 'passenger' | 'driver' = 'passenger', integrity: Integrity = 'ok', appId?: string) {
+    const d = await this.device(role, integrity, appId);
     const phone = this.newPhone();
     const r = await d.requestOtp(phone.local);
     if (r.status !== 202) throw new Error(`OTP ${r.status} ${JSON.stringify(r.body)}`);

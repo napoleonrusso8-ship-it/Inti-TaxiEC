@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidCedula, normalizePassport, normalizePersonName } from './identity-docs.js';
+import { isValidCedula, normalizePassport, normalizePersonName, validRuc } from './identity-docs.js';
 
 /** Calcula el dígito verificador para generar cédulas válidas de prueba. */
 function withCheckDigit(nine: string) {
@@ -32,4 +32,19 @@ describe('normalizePassport / normalizePersonName', () => {
     expect(normalizePersonName('Ana<script>')).toBeNull();
     expect(normalizePersonName('Ana 2')).toBeNull();
   });
+});
+
+describe('validRuc', () => {
+  it.each(['0990000000001', '1790012345001', '2400000000001', '3012345678001', ' 0912345678001 '])('acepta %s', (r) => expect(validRuc(r)).toBe(true));
+  it.each([
+    ['0990000000002', 'no termina en 001'],
+    ['099000000001', '12 dígitos'],
+    ['09900000000011', '14 dígitos'],
+    ['2500000000001', 'provincia 25'],
+    ['0000000000001', 'provincia 00'],
+    ['3100000000001', 'provincia 31'],
+    ['09900000A0001', 'con letras'],
+    ['0990000000-001', 'con guion'],
+    ['', 'vacío'],
+  ])('rechaza %s (%s)', (r) => expect(validRuc(r)).toBe(false));
 });

@@ -19,7 +19,7 @@ import { z } from 'zod';
 import { PG_POOL } from '../../tokens.js';
 import { KycService } from './kyc.service.js';
 
-const Purpose = z.enum(['biometric_kyc', 'audio_recording', 'trip_sharing', 'companion_data']);
+const Purpose = z.enum(['biometric_kyc', 'audio_recording', 'trip_sharing', 'companion_data', 'ellxs']);
 
 @Controller('v1')
 export class ConsentsController {
@@ -73,6 +73,8 @@ export class ConsentsController {
     await withTransaction(this.pool, async (c) => {
       await c.query(`INSERT INTO kyc.consents (id, user_id, purpose, action) VALUES ($1, $2, $3, 'revoke')`, [randomUUID(), auth.userId, p]);
       if (p === 'biometric_kyc') await this.kyc.onBiometricConsentRevoked(auth.userId, c);
+      // Sin consentimiento no se conserva el dato sensible: se borra la autodeclaración de Modo Ellxs.
+      if (p === 'ellxs') await c.query(`UPDATE people.passenger_profiles SET ellxs_member = false, updated_at = now() WHERE user_id = $1`, [auth.userId]);
       await this.audit.record({ action: 'consent.revoke', resourceType: 'consent', resourceId: p }, req, c);
     });
   }

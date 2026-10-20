@@ -1,20 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import type { TripPrefs } from '@intitaxi/mobile-core';
 import { TripMap } from '../components/Map';
 import { currentLocation } from '../lib/location';
 import { useNav } from '../lib/nav';
 import { useSession } from '../lib/session-context';
-import { C, Choice, H, P, Row, Screen, SERIF } from '../ui/kit';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { C, Choice, H, P, PrideBar, Row, Screen, Segmented, SERIF, TabBar } from '../ui/kit';
 import { Account } from './Account';
 import { HistoryList } from './History';
 
 type Tab = 'inicio' | 'viajes' | 'cuenta';
-const TABS: { id: Tab; label: string; title?: string }[] = [
-  { id: 'inicio', label: 'Inicio' },
-  { id: 'viajes', label: 'Mis viajes', title: 'Mis viajes' },
-  { id: 'cuenta', label: 'Cuenta', title: 'Mi cuenta' },
+const TABS: { id: Tab; icon: string; label: string; title?: string }[] = [
+  { id: 'inicio', icon: '◉', label: 'Inicio' },
+  { id: 'viajes', icon: '🧾', label: 'Mis viajes', title: 'Mis viajes' },
+  { id: 'cuenta', icon: '☰', label: 'Cuenta', title: 'Mi cuenta' },
 ];
 
 export function Home() {
@@ -39,24 +39,18 @@ export function Home() {
       <View style={{ flex: 1 }}>
         {tab === 'inicio' ? <Services /> : <Screen title={current.title}>{tab === 'viajes' ? <HistoryList /> : <Account />}</Screen>}
       </View>
-      <SafeAreaView edges={['bottom']} style={{ flexDirection: 'row', borderTopWidth: 1, borderColor: C.line, backgroundColor: C.bg }}>
-        {TABS.map((t) => (
-          <Pressable key={t.id} accessibilityRole="tab" accessibilityState={{ selected: t.id === tab }} onPress={() => setTab(t.id)} style={{ flex: 1, paddingVertical: 14, alignItems: 'center' }}>
-            <Text style={{ color: t.id === tab ? C.brand : C.muted, fontWeight: t.id === tab ? '700' : '500' }}>{t.label}</Text>
-          </Pressable>
-        ))}
-      </SafeAreaView>
+      <TabBar tabs={TABS} value={tab} onChange={setTab} />
     </View>
   );
 }
 
 const SERVICES = [
-  { id: 'taxi', icon: '🚕', label: 'Taxi' },
-  { id: 'ruta', icon: '🛣️', label: 'Taxi Ruta' },
-  { id: 'van', icon: '🚐', label: 'Furgoneta' },
-  { id: 'tow', icon: '🛻', label: 'Grúa' },
-  { id: 'rental', icon: '🔑', label: 'Alquiler' },
-  { id: 'ella', icon: '✦', label: 'Modo Ella' },
+  { id: 'taxi', icon: '🚕', label: 'Taxi', hint: 'A demanda' },
+  { id: 'ruta', icon: '🛣️', label: 'Taxi Ruta', hint: 'Por persona' },
+  { id: 'van', icon: '🚐', label: 'Furgoneta', hint: 'Rutas' },
+  { id: 'tow', icon: '🛻', label: 'Grúa', hint: 'Tú ofertas' },
+  { id: 'rental', icon: '🔑', label: 'Alquiler', hint: 'Tú ofertas' },
+  { id: 'ellxs', icon: '🌈', label: 'Ellxs', hint: 'Mujeres y LGBTI' },
 ] as const;
 
 const PREFS: { key: keyof TripPrefs; label: string }[] = [
@@ -67,13 +61,14 @@ const PREFS: { key: keyof TripPrefs; label: string }[] = [
   { key: 'wheelchair', label: '♿ Accesible' },
 ];
 
-/** Inicio: mapa, saludo y servicios (estilo de la propuesta aprobada: negro y dorado). */
+/** Inicio: selector Viajar | Trabajar, mapa, saludo y servicios. */
 function Services() {
-  const { api } = useSession();
+  const session = useSession();
+  const { api } = session;
   const nav = useNav();
   const [here, setHere] = useState<{ lat: number; lng: number } | null>(null);
   const [points, setPoints] = useState<number | null>(null);
-  const [prefs, setPrefs] = useState<{ defaultPrefs: TripPrefs; deviationAlerts: string; selfIdentifiesWoman: boolean; chosenName: string | null } | null>(null);
+  const [prefs, setPrefs] = useState<{ defaultPrefs: TripPrefs; deviationAlerts: string; ellxsMember: boolean; chosenName: string | null } | null>(null);
 
   useEffect(() => {
     void currentLocation().then((f) => f && setHere(f)).catch(() => {});
@@ -91,14 +86,25 @@ function Services() {
   };
   const open = (id: (typeof SERVICES)[number]['id']) => {
     if (id === 'taxi') nav.push('request');
-    else if (id === 'ella') nav.push(prefs?.selfIdentifiesWoman ? 'request' : 'preferences', prefs?.selfIdentifiesWoman ? { womenOnly: true } : { hint: 'ella' });
+    else if (id === 'ellxs') nav.push(prefs?.ellxsMember ? 'request' : 'preferences', prefs?.ellxsMember ? { ellxsOnly: true } : { hint: 'ellxs' });
     else if (id === 'ruta' || id === 'van') nav.push('routes', { vehicleType: id === 'van' ? 'van' : undefined });
     else nav.push(id);
   };
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: C.bg }}>
-      <TripMap height={260} markers={here ? [{ id: 'me', title: 'Estás aquí', ...here }] : []} />
+      <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, gap: 12 }}>
+        <Text style={{ color: C.brand, fontSize: 13, letterSpacing: 4, fontWeight: '700' }}>☀ INTI TAXI</Text>
+        <Segmented
+          value="ride"
+          onChange={(v) => v === 'work' && void session.mode.set('work').then(() => nav.reset('work'))}
+          options={[
+            { value: 'ride', label: 'Viajar' },
+            { value: 'work', label: 'Trabajar' },
+          ]}
+        />
+      </View>
+      <TripMap height={220} markers={here ? [{ id: 'me', title: 'Estás aquí', ...here }] : []} />
       <View style={{ flex: 1, marginTop: -24, backgroundColor: C.card, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: C.line, padding: 18, gap: 14 }}>
         <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 4, backgroundColor: C.line }} />
         <View>
@@ -113,9 +119,15 @@ function Services() {
         </Pressable>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {SERVICES.map((sv) => (
-            <Pressable key={sv.id} accessibilityRole="button" onPress={() => open(sv.id)} style={({ pressed }) => ({ width: '31.5%', backgroundColor: C.card2, borderWidth: 1, borderColor: pressed ? C.brand : C.line, borderRadius: 16, paddingVertical: 12, alignItems: 'center', gap: 4 })}>
-              <Text style={{ fontSize: 22 }}>{sv.icon}</Text>
-              <Text style={{ color: C.ink, fontSize: 12 }}>{sv.label}</Text>
+            <Pressable key={sv.id} accessibilityRole="button" onPress={() => open(sv.id)} style={({ pressed }) => ({ width: '31.5%', backgroundColor: C.card2, borderWidth: 1, borderColor: pressed ? C.brand : C.line, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 6, alignItems: 'center', gap: 3, overflow: 'hidden' })}>
+              {sv.id === 'ellxs' ? (
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0 }}>
+                  <PrideBar height={3} />
+                </View>
+              ) : null}
+              <Text style={{ fontSize: 24 }}>{sv.icon}</Text>
+              <Text style={{ color: C.ink, fontSize: 13, fontWeight: '600' }}>{sv.label}</Text>
+              <Text style={{ color: C.muted, fontSize: 10 }}>{sv.hint}</Text>
             </Pressable>
           ))}
         </View>

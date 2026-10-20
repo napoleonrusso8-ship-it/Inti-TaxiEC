@@ -4,7 +4,7 @@ import { money } from '@intitaxi/mobile-core';
 import { Security } from '@intitaxi/mobile-security';
 import { useNav } from '../lib/nav';
 import { useSession } from '../lib/session-context';
-import { Button, Card, ErrorText, Field, P, useAction } from '../ui/kit';
+import { Button, Card, ErrorText, Field, ListItem, P, useAction } from '../ui/kit';
 
 const KYC_LABEL: Record<string, string> = {
   approved: 'Identidad verificada ✓',
@@ -15,7 +15,7 @@ const KYC_LABEL: Record<string, string> = {
 };
 
 export function Account() {
-  const { api, client, keyHardware, risk } = useSession();
+  const { api, client, keyHardware, risk, logoutAll } = useSession();
   const nav = useNav();
   const [me, setMe] = useState<Awaited<ReturnType<typeof api.me>> | null>(null);
   const [kyc, setKyc] = useState<string | null>(null);
@@ -53,10 +53,13 @@ export function Account() {
           <P muted>PIN de seguridad y de emergencia, contactos de confianza</P>
         </Card>
       </Pressable>
+      <Card style={{ paddingVertical: 6 }}>
+        <ListItem icon="🤝" title="Trabajar con Inti Taxi" subtitle="Conductor, dueño de taxi o furgoneta, empresa de alquiler o grúa" onPress={() => nav.push('partner.join')} />
+      </Card>
       <Pressable onPress={() => nav.push('preferences')}>
         <Card>
           <P style={{ fontWeight: '700' }}>Preferencias</P>
-          <P muted>Cómo quieres que te llamen, Modo Ella, alerta de desvío, viaje silencioso</P>
+          <P muted>Cómo quieres que te llamen, Modo Ellxs, alerta de desvío, viaje silencioso</P>
         </Card>
       </Pressable>
       <Pressable onPress={() => nav.push('points')}>
@@ -94,7 +97,7 @@ export function Account() {
       </Card>
       {info ? <P>{info}</P> : null}
       <ErrorText error={error} />
-      <Button label="Cerrar sesión" kind="secondary" onPress={() => run(async () => (await client.logout(), nav.reset('login')))} />
+      <Button label="Cerrar sesión" kind="secondary" onPress={() => run(async () => (await logoutAll(), nav.reset('login')))} />
     </>
   );
 }

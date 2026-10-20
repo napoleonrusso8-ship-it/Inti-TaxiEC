@@ -6,7 +6,7 @@
 
 | Parte | Ubicación |
 |---|---|
-| App (Expo SDK 57, React Native 0.86, TypeScript) | `apps/mobile-passenger` |
+| App (Expo SDK 57, React Native 0.86, TypeScript) | `apps/mobile` (antes `apps/mobile-passenger`; desde el módulo 13 es la app única) |
 | Módulo nativo de seguridad (Kotlin) | `packages/mobile-security` |
 | Lógica compartida con la futura app de conductor: atestación, sesión DPoP, API y tiempo real | `packages/mobile-core` |
 | Pruebas del cliente contra los servidores reales | `e2e/tests/m11-mobile-core.e2e.test.ts` |
@@ -42,7 +42,7 @@ Pantallas:
 2. En tu computadora (Node 22 y pnpm), dentro del repositorio:
    ```bash
    pnpm install
-   cd apps/mobile-passenger
+   cd apps/mobile
    npx eas-cli login
    npx eas-cli build --platform android --profile development
    ```
@@ -54,13 +54,13 @@ Pantallas:
      ```bash
      pnpm dev            # servidores (terminal 1)
      pnpm android:usb    # conecta el teléfono a localhost (terminal 2)
-     pnpm --filter @intitaxi/mobile-passenger start   # código de la app (terminal 2)
+     pnpm --filter @intitaxi/mobile start   # código de la app (terminal 2)
      ```
    - Abre la app "Inti Taxi (development)" en el teléfono. Se conecta sola al código de la computadora.
 4. Inicia sesión con tu número. En desarrollo, el SMS no se envía de verdad: el código aparece en la **Bandeja** del simulador (http://localhost:4000).
 
 ### Opción B — Con Android Studio
-Con el teléfono conectado y `pnpm dev` corriendo: `pnpm android:usb` y luego, dentro de `apps/mobile-passenger`, `npx expo run:android`. Compila e instala la app directamente.
+Con el teléfono conectado y `pnpm dev` corriendo: `pnpm android:usb` y luego, dentro de `apps/mobile`, `npx expo run:android`. Compila e instala la app directamente.
 
 ### Por qué USB y no Wi-Fi
 Cada petición va firmada para una URL exacta (DPoP), y en desarrollo los servidores se anuncian como `localhost`. `adb reverse` hace que `localhost` en el teléfono sea tu computadora, sin abrir los servidores a la red Wi-Fi. Para usarla sin cable hay que publicar los servidores con HTTPS: es el siguiente paso de infraestructura.

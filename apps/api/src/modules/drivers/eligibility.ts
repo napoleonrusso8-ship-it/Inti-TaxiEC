@@ -1,6 +1,28 @@
-/** Reglas puras de habilitación del conductor (se reutilizan al conectarse en el módulo 4). */
+/** Reglas puras de habilitación del socio (se reutilizan al conectarse en el módulo 4). */
 export const DRIVER_DOCS = ['license', 'background_check'] as const;
 export const VEHICLE_DOCS = ['registration', 'insurance'] as const;
+
+/** Tipos de socio que se registran desde la app única. */
+export const PARTNER_KINDS = ['taxi_driver', 'route_taxi_owner', 'van_owner', 'rental_company', 'tow_operator'] as const;
+export type PartnerKind = (typeof PARTNER_KINDS)[number];
+export type VehicleType = 'taxi' | 'van' | 'tow' | 'rental';
+
+/** Tipos de vehículo que puede registrar cada tipo de socio. */
+export const ALLOWED_VEHICLE_TYPES: Record<PartnerKind, readonly VehicleType[]> = {
+  taxi_driver: ['taxi'],
+  route_taxi_owner: ['taxi'],
+  van_owner: ['van'],
+  rental_company: ['rental'],
+  tow_operator: ['tow'],
+};
+
+/** Documentos exigidos por tipo de socio: personales (o de la empresa) y de cada vehículo. */
+export function requiredDocs(kind: PartnerKind): { personal: string[]; vehicle: string[] } {
+  return { personal: kind === 'rental_company' ? ['company_ruc'] : [...DRIVER_DOCS], vehicle: [...VEHICLE_DOCS] };
+}
+
+/** Solo la empresa de alquiler opera sin licencia profesional (no conduce: alquila sus vehículos). */
+export const requiresLicense = (kind: PartnerKind) => kind !== 'rental_company';
 
 /** Categorías de licencia profesional admitidas para taxi. ⚠️ Confirmar con la normativa ANT vigente. */
 export const PROFESSIONAL_LICENSE_CATEGORIES = ['C', 'C1', 'D', 'D1', 'E', 'E1'];
@@ -18,8 +40,10 @@ export interface EligibilityInput {
   today: string; // AAAA-MM-DD en America/Guayaquil
   kycApproved: boolean;
   profileStatus: string;
-  licenseExpiresOn: string;
-  vehicles: { id: string; status: string }[];
+  /** Por omisión, conductor de taxi (compatibilidad con los perfiles anteriores a los tipos de socio). */
+  partnerKind?: PartnerKind;
+  licenseExpiresOn: string | null;
+  vehicles: { id: string; status: string; vehicleType?: string }[];
   docs: DocState[];
 }
 
@@ -31,13 +55,17 @@ export function eligibilityIssues(i: EligibilityInput, opts: { forApproval?: boo
   const issues: string[] = [];
   if (!i.kycApproved) issues.push('kyc_not_approved');
   if (!opts.forApproval && i.profileStatus !== 'approved') issues.push(`profile_${i.profileStatus}`);
-  if (i.licenseExpiresOn < i.today) issues.push('license_expired');
-  for (const t of DRIVER_DOCS) {
+  const kind = i.partnerKind ?? 'taxi_driver';
+  const req = requiredDocs(kind);
+  if (requiresLicense(kind) && (!i.licenseExpiresOn || i.licenseExpiresOn < i.today)) issues.push(i.licenseExpiresOn ? 'license_expired' : 'license_missing');
+  for (const t of req.personal) {
     if (!valid(i.docs.find((d) => d.type === t && !d.vehicleId), i.today)) issues.push(`doc_${t}_missing_or_invalid`);
   }
+  const allowed = ALLOWED_VEHICLE_TYPES[kind];
   const usable = i.vehicles.filter(
-    (v) => (opts.forApproval ? v.status !== 'rejected' && v.status !== 'inactive' : v.status === 'approved') &&
-      VEHICLE_DOCS.every((t) => valid(i.docs.find((d) => d.type === t && d.vehicleId === v.id), i.today)),
+    (v) => allowed.includes((v.vehicleType ?? 'taxi') as VehicleType) &&
+      (opts.forApproval ? v.status !== 'rejected' && v.status !== 'inactive' : v.status === 'approved') &&
+      req.vehicle.every((t) => valid(i.docs.find((d) => d.type === t && d.vehicleId === v.id), i.today)),
   );
   if (usable.length === 0) issues.push('no_valid_vehicle');
   return issues;

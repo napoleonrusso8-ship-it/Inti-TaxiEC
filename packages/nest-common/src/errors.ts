@@ -15,7 +15,7 @@ export class AppError extends Error {
 /** Error con formato OAuth (RFC 6749 §5.2) para el endpoint de tokens. */
 export class OAuthError extends Error {
   constructor(
-    readonly error: 'invalid_request' | 'invalid_grant' | 'invalid_client' | 'unsupported_grant_type' | 'invalid_dpop_proof',
+    readonly error: 'invalid_request' | 'invalid_grant' | 'invalid_client' | 'unsupported_grant_type' | 'invalid_dpop_proof' | 'invalid_target',
     readonly status = 400,
   ) {
     super(error);

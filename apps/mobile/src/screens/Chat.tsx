@@ -3,8 +3,16 @@ import { Alert, FlatList, Image, Pressable, Text, TextInput, View } from 'react-
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import type { ChatMessage, UploadInstructions } from '@intitaxi/mobile-core';
+import type { ChatMessage } from '@intitaxi/mobile-core';
 import { useSession } from '../lib/session-context';
+import { sendFile } from '../lib/upload';
+
+/** Quién escribe desde este teléfono: el pasajero o el conductor (misma app, sesiones distintas). */
+export type ChatRole = 'passenger' | 'driver';
+const useChatApi = (as: ChatRole) => {
+  const s = useSession();
+  return as === 'driver' ? { api: s.partner.api, realtime: s.partner.realtime } : { api: s.api, realtime: s.realtime };
+};
 import { C, ErrorText, Row, Screen, useAction } from '../ui/kit';
 
 const MAX_VIDEO_S = 20;
@@ -16,8 +24,8 @@ type Kind = 'voice' | 'photo' | 'video';
  * El servidor revisa cada archivo (tipo real, duración, metadatos de ubicación) antes de entregarlo,
  * y lo borra a los 30 días salvo que haya un reporte o SOS.
  */
-export function Chat({ tripId, start }: { tripId: string; start?: Kind }) {
-  const { api, realtime } = useSession();
+export function Chat({ tripId, start, as = 'passenger' }: { tripId: string; start?: Kind; as?: ChatRole }) {
+  const { api, realtime } = useChatApi(as);
   const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState<string | null>(null);
@@ -94,7 +102,7 @@ export function Chat({ tripId, start }: { tripId: string; start?: Kind }) {
     ]);
 
   return (
-    <Screen title="Chat con el conductor" scroll={false}>
+    <Screen title={as === 'driver' ? 'Chat con el pasajero' : 'Chat con el conductor'} scroll={false}>
       <FlatList
         ref={list}
         style={{ flex: 1 }}
@@ -103,7 +111,7 @@ export function Chat({ tripId, start }: { tripId: string; start?: Kind }) {
         onContentSizeChange={() => list.current?.scrollToEnd({ animated: true })}
         contentContainerStyle={{ gap: 8, paddingVertical: 8 }}
         ListHeaderComponent={<Text style={{ color: C.muted, fontSize: 12, textAlign: 'center' }}>No compartas datos personales ni de pago. Los mensajes se guardan 30 días por seguridad.</Text>}
-        renderItem={({ item }) => <Bubble tripId={tripId} m={item} />}
+        renderItem={({ item }) => <Bubble tripId={tripId} m={item} as={as} />}
       />
       {sending ? <Text style={{ color: C.brand2 }}>{sending}</Text> : null}
       {rec.isRecording ? (
@@ -132,20 +140,6 @@ export function Chat({ tripId, start }: { tripId: string; start?: Kind }) {
   );
 }
 
-/** Sube el archivo según lo que indique el servidor (URL firmada PUT o formulario POST). */
-async function sendFile(u: UploadInstructions, uri: string, blob: Blob, contentType: string) {
-  let r: Response;
-  if (u.method === 'PUT') {
-    r = await fetch(u.url, { method: 'PUT', headers: { 'content-type': contentType, ...u.headers }, body: blob });
-  } else {
-    const form = new FormData();
-    for (const [k, v] of Object.entries(u.fields ?? {})) form.append(k, v);
-    form.append('file', { uri, type: contentType, name: 'archivo' } as unknown as Blob);
-    r = await fetch(u.url, { method: 'POST', headers: u.headers, body: form });
-  }
-  if (!r.ok) throw new Error('No se pudo subir el archivo. Revisa tu conexión e intenta de nuevo.');
-}
-
 function IconBtn({ label, a11y, on, active }: { label: string; a11y: string; on: () => void; active?: boolean }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={a11y} onPress={on} style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? C.brand : C.card2, borderWidth: 1, borderColor: active ? C.brand : C.line }}>
@@ -154,20 +148,20 @@ function IconBtn({ label, a11y, on, active }: { label: string; a11y: string; on:
   );
 }
 
-function Bubble({ tripId, m }: { tripId: string; m: ChatMessage }) {
-  const mine = m.from === 'passenger';
+function Bubble({ tripId, m, as }: { tripId: string; m: ChatMessage; as: ChatRole }) {
+  const mine = m.from === as;
   return (
     <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', backgroundColor: mine ? 'rgba(212,168,75,0.18)' : C.card2, borderColor: mine ? C.brand : C.line, borderWidth: 1, borderRadius: 16, padding: 10, gap: 4 }}>
       {m.text ? <Text style={{ color: C.ink, fontSize: 15 }}>{m.text}</Text> : null}
-      {m.mediaId && m.kind ? <Media tripId={tripId} mediaId={m.mediaId} kind={m.kind} durationMs={m.durationMs ?? null} /> : null}
+      {m.mediaId && m.kind ? <Media tripId={tripId} mediaId={m.mediaId} kind={m.kind} durationMs={m.durationMs ?? null} as={as} /> : null}
       <Text style={{ color: C.muted, fontSize: 10, alignSelf: 'flex-end' }}>{new Date(m.at).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}</Text>
     </View>
   );
 }
 
 /** Los archivos se piden al tocarlos: la URL de descarga dura 60 s y no se guarda en el teléfono. */
-function Media({ tripId, mediaId, kind, durationMs }: { tripId: string; mediaId: string; kind: Kind; durationMs: number | null }) {
-  const { api } = useSession();
+function Media({ tripId, mediaId, kind, durationMs, as }: { tripId: string; mediaId: string; kind: Kind; durationMs: number | null; as: ChatRole }) {
+  const { api } = useChatApi(as);
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const open = () => api.chatMediaUrl(tripId, mediaId).then((r) => setUrl(r.url), () => setFailed(true));

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
 import type { AuthContext } from '@intitaxi/auth-verifier';
 import { AccessTokenGuard, AppError, AttestationGuard, Auth, parseInput, type AppRequest } from '@intitaxi/nest-common';
 import { z } from 'zod';
@@ -22,13 +22,13 @@ export class CommunityController {
     return this.community.preferences(auth.userId);
   }
 
-  /** Nombre de preferencia, Modo Ella (autodeclaración), alerta de desvío y preferencias por defecto. */
+  /** Nombre de preferencia, Modo Ellxs (autodeclaración con consentimiento), alerta de desvío y preferencias por defecto. */
   @Put('me/preferences')
   setPreferences(@Req() req: AppRequest, @Auth() auth: AuthContext, @Body() body: unknown) {
     const i = parseInput(
       z.object({
         chosenName: z.string().trim().min(2).max(40).regex(/^[\p{L} '.-]+$/u).nullable().optional(),
-        selfIdentifiesWoman: z.boolean().optional(),
+        ellxsMember: z.boolean().optional(),
         deviationAlerts: z.enum(['night', 'always', 'off']).optional(),
         defaultPrefs: TripPrefs.optional(),
       }).strict(),
@@ -66,11 +66,11 @@ export class CommunityController {
 export class DriverCommunityController {
   constructor(@Inject(CommunityService) private readonly community: CommunityService) {}
 
-  @Post('women-rides/request')
+  @Post('ellxs/request')
   @HttpCode(200)
-  womenRides(@Req() req: AppRequest, @Auth() auth: AuthContext) {
+  ellxs(@Req() req: AppRequest, @Auth() auth: AuthContext) {
     if (auth.clientId !== 'intitaxi-driver') throw new AppError(403, 'forbidden', 'Usa la app de conductor');
-    return this.community.requestWomenRides(auth.userId, req);
+    return this.community.requestEllxs(auth.userId, req);
   }
 
   @Get('ally/course')
@@ -97,15 +97,15 @@ export class DriverCommunityController {
 export class AdminCommunityController {
   constructor(@Inject(CommunityService) private readonly community: CommunityService) {}
 
-  @Get('women-rides/pending')
-  async pendingWomenRides(@Query('limit') _limit?: string) {
-    return this.community.pendingWomenRides();
+  @Get('ellxs/pending')
+  async pendingEllxs() {
+    return this.community.pendingEllxs();
   }
 
-  @Post(':id/women-rides')
+  @Post(':id/ellxs')
   @HttpCode(200)
   @AdminWrite()
   decide(@Req() req: AppRequest, @Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
-    return this.community.approveWomenRides(auth.userId, id, parseInput(z.object({ approve: z.boolean() }), body).approve, req);
+    return this.community.approveEllxs(auth.userId, id, parseInput(z.object({ approve: z.boolean() }), body).approve, req);
   }
 }

@@ -26,7 +26,7 @@
 - Grúas y alquiler (`AssistModule`): sugerencia de precio, oferta, subir oferta, aceptación atómica (solo uno gana), avance, comisión en el libro contable, vencimiento automático. Alquiler exige KYC.
 - Comunidad (`CommunityModule`): preferencias, Modo Ella (solicitud de conductora + aprobación), curso Conductor Aliado, mascota/silla de ruedas por vehículo, Inti Puntos (1 punto por dólar; 100 puntos = $1; canje desde 500, máx. 2000 al mes) y **alerta de desvío** (detecta alejamiento del destino o parada larga; pregunta solo al pasajero; sin respuesta o con "ayuda" escala al servicio SOS).
 
-**App de pasajero (`apps/mobile-passenger`)** — nuevo diseño negro y dorado, títulos con serifa:
+**App de pasajero (`apps/mobile`, antes `apps/mobile-passenger`)** — nuevo diseño negro y dorado, títulos con serifa:
 - Inicio con mapa oscuro y servicios: Taxi, Taxi Ruta, Furgoneta, Grúa, Alquiler, Modo Ella; preferencias rápidas; Inti Puntos.
 - Pedir taxi con preferencias, Modo Ella, "solo Conductores Aliados" y desglose de la tarifa dinámica.
 - Viaje: perfil del conductor, PIN, chat/voz/foto/video, "otra unidad (x de 5)", comprobación "¿estás bien?", SOS, calificación con etiquetas, reporte.

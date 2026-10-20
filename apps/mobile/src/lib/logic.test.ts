@@ -35,3 +35,16 @@ describe('URL mínimo (Hermes)', () => {
     expect(new MiniSearchParams(form).toString()).toBe(new URLSearchParams(form).toString());
   });
 });
+
+describe('perfiles de socio (menú de registro)', async () => {
+  const { PARTNER_KINDS, issueLabel } = await import('@intitaxi/mobile-core');
+  it('ofrece los cinco perfiles; la empresa de alquiler no pide licencia', () => {
+    expect(PARTNER_KINDS.map((k) => k.kind)).toEqual(['taxi_driver', 'route_taxi_owner', 'van_owner', 'rental_company', 'tow_operator']);
+    expect(PARTNER_KINDS.find((k) => k.kind === 'rental_company')!.needsLicense).toBe(false);
+    expect(PARTNER_KINDS.find((k) => k.kind === 'van_owner')!.vehicle).toBe('van');
+  });
+  it('traduce los motivos del servidor a texto claro', () => {
+    expect(issueLabel('doc_company_ruc_missing_or_invalid')).toBe('Falta o no es válido: Certificado del RUC de la empresa');
+    expect(issueLabel('kyc_not_approved')).toMatch(/cédula/);
+  });
+});
