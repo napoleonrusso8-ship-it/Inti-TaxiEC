@@ -4,6 +4,14 @@ const MOBILE = ['passenger', 'driver'];
 const firstDriver = (_d, s) => s.devices.find((x) => x.role === 'driver' && x.userId)?.userId ?? '';
 const driverId = { name: 'driverId', label: 'ID del conductor (usuario)', default: firstDriver };
 const PLACE_NAMES = ['Mall del Sol', 'Malecón 2000', 'Aeropuerto José Joaquín de Olmedo', 'Terminal Terrestre', 'Parque Centenario', 'City Mall', 'Riocentro Norte', 'San Marino', 'Urdesa', 'Samborondón'];
+const PURPOSES = [{ value: 'biometric_kyc', label: 'Verificación biométrica' }, { value: 'audio_recording', label: 'Audio en emergencias' }, { value: 'trip_sharing', label: 'Compartir viajes' }, { value: 'companion_data', label: 'Datos de acompañante' }, { value: 'ellxs', label: 'Modo Ellxs (dato sensible)' }];
+const PARTNER_KINDS = [
+  { value: 'taxi_driver', label: 'Nuevo conductor de taxi' },
+  { value: 'route_taxi_owner', label: 'Dueño de taxi amarillo (Taxi Ruta)' },
+  { value: 'van_owner', label: 'Dueño de furgoneta (Taxi Ruta)' },
+  { value: 'rental_company', label: 'Empresa de alquiler de autos' },
+  { value: 'tow_operator', label: 'Operador de grúa' },
+];
 const place = (name, label, first = 0) => ({ name, label, type: 'select', options: [...PLACE_NAMES.slice(first), ...PLACE_NAMES.slice(0, first)].map((p) => ({ value: p, label: p })) });
 
 export const SECTIONS = [
@@ -16,6 +24,7 @@ export const SECTIONS = [
       { label: 'Ver mi perfil', action: 'me', hint: 'Los datos vuelven enmascarados.' },
       { label: 'Renovar sesión (refresh)', action: 'refresh', hint: 'Rota el refresh token.' },
       { label: 'Olvidar token de acceso', action: 'token.forget', hint: 'Simula que pasaron 10 min; luego usa "Renovar".' },
+      { label: 'App única: pasar a socio (sin otro SMS)', action: 'token.exchange', roles: ['passenger'], hint: 'Token exchange (RFC 8693) a la sesión de socio con la misma clave DPoP. Un teléfono rooteado no puede trabajar como socio.' },
       { label: 'Mis sesiones', action: 'sessions' },
       { label: 'Cerrar una sesión', action: 'session.revoke', fields: [{ name: 'sessionId', label: 'ID de sesión' }] },
       { label: 'Cerrar sesión (logout)', action: 'logout' },
@@ -49,9 +58,9 @@ export const SECTIONS = [
     roles: MOBILE,
     note: 'La app real abre el SDK del proveedor (documento + selfie con prueba de vida). Aquí tú haces de proveedor y eliges el resultado.',
     items: [
-      { label: 'Leer consentimiento', action: 'consent.text', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: [{ value: 'biometric_kyc', label: 'Verificación biométrica' }, { value: 'audio_recording', label: 'Audio en emergencias' }, { value: 'trip_sharing', label: 'Compartir viajes' }, { value: 'companion_data', label: 'Datos de acompañante' }] }] },
-      { label: 'Aceptar consentimiento', action: 'consent.grant', hint: 'Separado, explícito y revocable.', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: [{ value: 'biometric_kyc', label: 'Verificación biométrica' }, { value: 'audio_recording', label: 'Audio en emergencias' }, { value: 'trip_sharing', label: 'Compartir viajes' }, { value: 'companion_data', label: 'Datos de acompañante' }] }] },
-      { label: 'Revocar consentimiento', action: 'consent.revoke', hint: 'Invalida el resultado y borra los datos en el proveedor.', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: [{ value: 'biometric_kyc', label: 'Verificación biométrica' }, { value: 'audio_recording', label: 'Audio en emergencias' }, { value: 'trip_sharing', label: 'Compartir viajes' }, { value: 'companion_data', label: 'Datos de acompañante' }] }] },
+      { label: 'Leer consentimiento', action: 'consent.text', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: PURPOSES }] },
+      { label: 'Aceptar consentimiento', action: 'consent.grant', hint: 'Separado, explícito y revocable.', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: PURPOSES }] },
+      { label: 'Revocar consentimiento', action: 'consent.revoke', hint: 'Invalida el resultado y borra los datos en el proveedor.', fields: [{ name: 'purpose', label: 'Finalidad', type: 'select', options: PURPOSES }] },
       { label: 'Mis consentimientos', action: 'consents' },
       { label: 'Iniciar verificación', action: 'kyc.start', fields: [{ name: 'kind', label: 'Tipo', type: 'select', options: [{ value: 'full', label: 'Completa (cédula + selfie)' }, { value: 'driver_reverify', label: 'Selfie de conductor' }] }] },
       {
@@ -70,24 +79,35 @@ export const SECTIONS = [
     ],
   },
   {
-    title: 'Módulo 3 · Ser conductor (solicitud, vehículo y documentos)',
+    title: 'Módulo 3 · Ser socio (tipo, solicitud, vehículo y documentos)',
     roles: ['driver'],
-    note: 'Requisito previo: identidad verificada (módulo 2).',
+    note: 'Requisito previo: identidad verificada (módulo 2). Cada tipo de socio registra solo su tipo de vehículo; la empresa de alquiler envía RUC en lugar de licencia.',
     items: [
-      { label: 'Enviar datos de licencia', action: 'driver.apply', fields: [{ name: 'licenseNumber', label: 'Nº de licencia', default: 'L0912345675' }, { name: 'licenseCategory', label: 'Categoría', type: 'select', options: ['C', 'C1', 'D', 'E', 'B'].map((c) => ({ value: c, label: c === 'B' ? 'B (no profesional: se rechaza)' : c })) }, { name: 'licenseExpiresOn', label: 'Vence', default: '2029-12-31' }] },
-      { label: 'Registrar vehículo', action: 'vehicle.add', fields: [{ name: 'plate', label: 'Placa', default: 'GSA-1234' }, { name: 'make', label: 'Marca', default: 'Chevrolet' }, { name: 'model', label: 'Modelo', default: 'Aveo' }, { name: 'year', label: 'Año', default: '2022' }, { name: 'color', label: 'Color', default: 'Amarillo' }, { name: 'seats', label: 'Asientos para pasajeros', default: '4' }, { name: 'vehicleType', label: 'Tipo', type: 'select', options: [{ value: 'taxi', label: 'Taxi (1–4 asientos)' }, { value: 'van', label: 'Furgoneta (5–15 asientos)' }] }] },
+      {
+        label: 'Enviar solicitud de socio',
+        action: 'driver.apply',
+        fields: [
+          { name: 'partnerKind', label: 'Quiero registrarme como', type: 'select', options: PARTNER_KINDS },
+          { name: 'licenseNumber', label: 'Nº de licencia (no aplica a alquiler)', default: 'L0912345675' },
+          { name: 'licenseCategory', label: 'Categoría', type: 'select', options: ['C', 'C1', 'D', 'E', 'B'].map((c) => ({ value: c, label: c === 'B' ? 'B (no profesional: se rechaza)' : c })) },
+          { name: 'licenseExpiresOn', label: 'Vence', default: '2029-12-31' },
+          { name: 'businessName', label: 'Razón social (solo alquiler)', default: 'Alquileres del Pacífico S.A.' },
+          { name: 'ruc', label: 'RUC (solo alquiler: 13 dígitos, termina en 001)', default: '0992345678001' },
+        ],
+      },
+      { label: 'Registrar vehículo', action: 'vehicle.add', fields: [{ name: 'plate', label: 'Placa', default: 'GSA-1234' }, { name: 'make', label: 'Marca', default: 'Chevrolet' }, { name: 'model', label: 'Modelo', default: 'Aveo' }, { name: 'year', label: 'Año', default: '2022' }, { name: 'color', label: 'Color', default: 'Amarillo' }, { name: 'seats', label: 'Asientos para pasajeros', default: '4' }, { name: 'vehicleType', label: 'Tipo', type: 'select', options: [{ value: 'taxi', label: 'Taxi (1–4 asientos)' }, { value: 'van', label: 'Furgoneta (5–15 asientos)' }, { value: 'tow', label: 'Grúa (1–2 asientos)' }, { value: 'rental', label: 'Alquiler (1–8 asientos)' }] }, { name: 'rentalCategory', label: 'Categoría (solo alquiler)', type: 'select', options: ['auto', 'suv', 'camioneta', 'furgoneta'].map((c) => ({ value: c, label: c })) }] },
       {
         label: 'Subir documento',
         action: 'doc.upload',
         hint: 'Los de vehículo se asocian al último vehículo registrado.',
         fields: [
-          { name: 'type', label: 'Documento', type: 'select', options: [{ value: 'license', label: 'Licencia' }, { value: 'background_check', label: 'Antecedentes (PDF)' }, { value: 'registration', label: 'Matrícula' }, { value: 'insurance', label: 'SOAT/SPPAT o seguro' }] },
+          { name: 'type', label: 'Documento', type: 'select', options: [{ value: 'license', label: 'Licencia' }, { value: 'background_check', label: 'Antecedentes (PDF)' }, { value: 'company_ruc', label: 'Certificado del RUC (alquiler)' }, { value: 'registration', label: 'Matrícula' }, { value: 'insurance', label: 'SOAT/SPPAT o seguro' }] },
           { name: 'variant', label: 'Archivo', type: 'select', options: [{ value: 'valid', label: 'Válido' }, { value: 'eicar', label: 'Con "malware" (EICAR)' }, { value: 'fake_type', label: 'PDF disfrazado de imagen' }, { value: 'pdf_js', label: 'PDF con JavaScript' }] },
           { name: 'expiresOn', label: 'Vence', default: '2030-01-01' },
         ],
       },
       { label: 'Enviar solicitud a revisión', action: 'driver.submit' },
-      { label: 'Ver mi estado de conductor', action: 'driver.profile' },
+      { label: 'Ver mi estado de socio', action: 'driver.profile', hint: 'Tipo, vehículos permitidos, documentos exigidos y lo que falta. RUC y licencia enmascarados.' },
     ],
   },
   {
@@ -95,7 +115,7 @@ export const SECTIONS = [
     roles: ['passenger'],
     items: [
       { label: 'Cotizar', action: 'trip.quote', hint: 'Precio cerrado, válido 5 min.', fields: [place('from', 'Origen'), place('to', 'Destino', 1)] },
-      { label: 'Confirmar viaje', action: 'trip.request', fields: [{ name: 'paymentMethod', label: 'Pago', type: 'select', options: [{ value: 'cash', label: 'Efectivo' }, { value: 'card', label: 'Tarjeta' }, { value: 'wallet', label: 'Billetera' }] }] },
+      { label: 'Confirmar viaje', action: 'trip.request', fields: [{ name: 'paymentMethod', label: 'Pago', type: 'select', options: [{ value: 'cash', label: 'Efectivo' }, { value: 'card', label: 'Tarjeta' }, { value: 'wallet', label: 'Billetera' }] }, { name: 'ellxsOnly', label: 'Modo Ellxs', type: 'select', options: [{ value: 'false', label: 'No' }, { value: 'true', label: 'Sí: solo Conductorxs Ellxs' }] }] },
       { label: 'Ver mi viaje', action: 'trip.view', hint: 'Conductor, placa y ubicación.' },
       { label: 'Ver PIN', action: 'trip.pin', hint: 'Díselo al conductor al subir.' },
       { label: 'Llamar al conductor (número enmascarado)', action: 'trip.contact' },
@@ -144,6 +164,17 @@ export const SECTIONS = [
       { label: 'Viaje actual', action: 'driver.current' },
       { label: 'Calificar pasajero', action: 'trip.rate', fields: [{ name: 'stars', label: 'Estrellas', type: 'select', options: [5, 4, 3, 2, 1].map((n) => ({ value: n, label: '★'.repeat(n) })) }] },
       { label: 'Desconectarme', action: 'driver.offline' },
+    ],
+  },
+  {
+    title: 'Inclusión · Modo Ellxs',
+    roles: MOBILE,
+    note: 'Viajes para mujeres y personas LGBTI con Conductorxs Ellxs aprobadxs por el equipo. La autodeclaración es un solo sí/no: no dice si eres mujer o LGBTI, y nunca se muestra a quien conduce.',
+    items: [
+      { label: 'Aceptar consentimiento Modo Ellxs', action: 'consent.grant', roles: ['passenger'], params: () => ({ purpose: 'ellxs' }), hint: 'Dato sensible (LOPDP art. 26): sin este consentimiento no se puede activar.' },
+      { label: 'Activar / desactivar Modo Ellxs', action: 'prefs.ellxs', roles: ['passenger'], hint: 'Desactivarlo borra la autodeclaración y retira el consentimiento.', fields: [{ name: 'on', label: 'Modo Ellxs', type: 'select', options: [{ value: 'true', label: 'Activar' }, { value: 'false', label: 'Desactivar' }] }] },
+      { label: 'Mis preferencias', action: 'prefs', roles: ['passenger'] },
+      { label: 'Pedir ser Conductorx Ellxs', action: 'driver.ellxs.request', roles: ['driver'], hint: 'Una persona del equipo lo verifica antes de habilitarte.' },
     ],
   },
   {
@@ -210,6 +241,8 @@ export const SECTIONS = [
       { label: 'Revisar un documento', action: 'admin.doc.review', fields: [driverId, { name: 'documentId', label: 'ID del documento' }, { name: 'decision', label: 'Decisión', type: 'select', options: [{ value: 'approved', label: 'Aprobar' }, { value: 'rejected', label: 'Rechazar' }] }, { name: 'reason', label: 'Motivo (si rechaza)' }] },
       { label: 'Aprobar todos los documentos', action: 'admin.docs.approveAll', fields: [driverId] },
       { label: 'Decidir conductor', action: 'admin.driver.decide', fields: [driverId, { name: 'decision', label: 'Decisión', type: 'select', options: [{ value: 'approve', label: 'Aprobar' }, { value: 'reject', label: 'Rechazar' }, { value: 'suspend', label: 'Suspender' }] }, { name: 'reason', label: 'Motivo', default: 'Documentos en regla' }] },
+      { label: 'Solicitudes Conductorx Ellxs', action: 'admin.ellxs.pending' },
+      { label: 'Aprobar / retirar Modo Ellxs', action: 'admin.ellxs.decide', hint: 'Verificación por una persona del equipo (no se pide a qué grupo pertenece).', fields: [driverId, { name: 'approve', label: 'Decisión', type: 'select', options: [{ value: 'true', label: 'Aprobar' }, { value: 'false', label: 'Retirar' }] }] },
       { label: 'Asignar rol (super_admin)', action: 'admin.role.grant', fields: [{ name: 'userId', label: 'ID de usuario' }, { name: 'role', label: 'Rol', type: 'select', options: ['driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo'].map((v) => ({ value: v, label: v })) }] },
     ],
   },
@@ -263,8 +296,10 @@ export const SECTIONS = [
   {
     title: 'Módulo 9 · Taxi Ruta (conductor)',
     roles: ['driver'],
-    note: 'Requiere estar aprobado, conectado y habilitado en la ruta por un route_manager.',
+    note: 'Requiere estar aprobado, conectado y habilitado en la ruta por un route_manager. Los dueños de taxi amarillo y de furgoneta lo piden desde la app.',
     items: [
+      { label: 'Catálogo de rutas', action: 'droute.catalog', hint: 'Si ya estás habilitado o el estado de tu solicitud.' },
+      { label: 'Pedir habilitación en la ruta', action: 'droute.requestEnable', hint: 'Con tu último vehículo aprobado (taxi o furgoneta).', fields: [{ name: 'routeId', label: 'ID de la ruta (vacío = la primera del catálogo)' }] },
       { label: 'Mis rutas habilitadas', action: 'droute.list' },
       { label: 'Iniciar recorrido', action: 'droute.start', fields: [{ name: 'direction', label: 'Sentido', type: 'select', options: [{ value: 'outbound', label: 'Ida (Villa Bonita → Centro)' }, { value: 'inbound', label: 'Vuelta (Centro → Villa Bonita)' }] }, { name: 'routeId', label: 'ID de la ruta (vacío = la habilitada)' }] },
       { label: 'Pasajeros del recorrido', action: 'droute.current' },
@@ -287,6 +322,8 @@ export const SECTIONS = [
       { label: 'Aprobar / rechazar publicación', action: 'admin.route.decide', hint: 'Debe hacerlo un admin distinto al que la solicitó.', fields: [{ name: 'routeId', label: 'ID de la ruta' }, { name: 'approve', label: 'Decisión', type: 'select', options: [{ value: 'true', label: 'Aprobar' }, { value: 'false', label: 'Rechazar' }] }] },
       { label: 'Pausar ruta', action: 'admin.route.pause', fields: [{ name: 'routeId', label: 'ID de la ruta' }, { name: 'reason', label: 'Motivo', default: 'Mantenimiento de la vía' }] },
       { label: 'Habilitar conductor en la ruta', action: 'admin.route.enable', fields: [{ name: 'routeId', label: 'ID de la ruta' }, driverId] },
+      { label: 'Solicitudes de habilitación', action: 'admin.route.requests', fields: [{ name: 'status', label: 'Estado', type: 'select', options: ['pending', 'approved', 'rejected'].map((v) => ({ value: v, label: v })) }] },
+      { label: 'Decidir solicitud', action: 'admin.route.requestDecide', fields: [{ name: 'requestId', label: 'ID de la solicitud (vacío = la más antigua)' }, { name: 'approve', label: 'Decisión', type: 'select', options: [{ value: 'true', label: 'Aprobar' }, { value: 'false', label: 'Rechazar' }] }, { name: 'reason', label: 'Motivo (si rechaza)' }] },
     ],
   },
   {

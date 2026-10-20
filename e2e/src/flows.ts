@@ -50,14 +50,27 @@ export async function uploadDoc(d: SimDevice, type: string, opts: { vehicleId?: 
   return d.call('api', 'POST', `/v1/driver/documents/${u.body.documentId}/complete`);
 }
 
-/** Conductor con solicitud completa enviada (pendiente de revisión). */
-export async function submittedDriver(s: Stack, seats = 4, vehicleType: 'taxi' | 'van' | 'tow' | 'rental' = 'taxi', rentalCategory = 'auto') {
+/** RUC de prueba con forma válida (provincia 09, termina en 001). */
+export const randomRuc = () => `09${Math.floor(Math.random() * 1e8).toString().padStart(8, '0')}001`;
+
+/** Tipo de socio que corresponde a cada tipo de vehículo (cada socio registra solo su tipo de vehículo). */
+export const KIND_FOR_VEHICLE = { taxi: 'taxi_driver', van: 'van_owner', tow: 'tow_operator', rental: 'rental_company' } as const;
+
+/** Cuerpo de la solicitud de socio según su tipo (la empresa de alquiler envía RUC en lugar de licencia). */
+export function applicationBody(kind: string, doc: string) {
+  return kind === 'rental_company'
+    ? { partnerKind: kind, company: { businessName: 'Alquileres del Pacífico S.A.', ruc: randomRuc() } }
+    : { partnerKind: kind, licenseNumber: `L${doc}`, licenseCategory: 'C', licenseExpiresOn: '2029-12-31' };
+}
+
+/** Socio con solicitud completa enviada (pendiente de revisión). El tipo de socio sale del tipo de vehículo. */
+export async function submittedDriver(s: Stack, seats = 4, vehicleType: 'taxi' | 'van' | 'tow' | 'rental' = 'taxi', rentalCategory = 'auto', partnerKind: string = KIND_FOR_VEHICLE[vehicleType]) {
   const u = await verifiedUser(s, 'driver');
-  const app = await u.d.call('api', 'POST', '/v1/driver/application', { licenseNumber: `L${u.doc}`, licenseCategory: 'C', licenseExpiresOn: '2029-12-31' });
+  const app = await u.d.call('api', 'POST', '/v1/driver/application', applicationBody(partnerKind, u.doc));
   if (app.status !== 201) throw new Error(`apply ${app.status} ${JSON.stringify(app.body)}`);
   const v = await u.d.call('api', 'POST', '/v1/driver/vehicles', { plate: randomPlate(), make: vehicleType === 'van' ? 'Hyundai' : 'Chevrolet', model: vehicleType === 'van' ? 'H1' : 'Aveo', year: 2022, color: vehicleType === 'van' ? 'Blanco' : 'Amarillo', seats, vehicleType, ...(vehicleType === 'rental' ? { rentalCategory } : {}) });
   if (v.status !== 201) throw new Error(`vehicle ${v.status} ${JSON.stringify(v.body)}`);
-  for (const t of ['license', 'background_check']) await uploadDoc(u.d, t);
+  for (const t of partnerKind === 'rental_company' ? ['company_ruc'] : ['license', 'background_check']) await uploadDoc(u.d, t);
   for (const t of ['registration', 'insurance']) await uploadDoc(u.d, t, { vehicleId: v.body.id });
   const sub = await u.d.call('api', 'POST', '/v1/driver/application/submit');
   if (sub.status !== 200) throw new Error(`submit ${sub.status} ${JSON.stringify(sub.body)}`);
@@ -65,8 +78,8 @@ export async function submittedDriver(s: Stack, seats = 4, vehicleType: 'taxi' |
 }
 
 /** Conductor aprobado por un revisor (todos los documentos revisados). */
-export async function approvedDriver(s: Stack, reviewer?: SimDevice, seats = 4, vehicleType: 'taxi' | 'van' | 'tow' | 'rental' = 'taxi', rentalCategory = 'auto') {
-  const drv = await submittedDriver(s, seats, vehicleType, rentalCategory);
+export async function approvedDriver(s: Stack, reviewer?: SimDevice, seats = 4, vehicleType: 'taxi' | 'van' | 'tow' | 'rental' = 'taxi', rentalCategory = 'auto', partnerKind: string = KIND_FOR_VEHICLE[vehicleType]) {
+  const drv = await submittedDriver(s, seats, vehicleType, rentalCategory, partnerKind);
   const admin = reviewer ?? (await adminSession(s, 'driver_reviewer')).web;
   const detail = await admin.call('api', 'GET', `/v1/admin/drivers/${drv.userId}`);
   for (const doc of detail.body.documents) {

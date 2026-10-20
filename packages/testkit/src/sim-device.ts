@@ -165,6 +165,21 @@ export class SimDevice {
     return t.status === 200 ? { status: 200, body: { isNewUser: v.body.isNewUser, expiresIn: t.body.expires_in } } : t;
   }
 
+  /**
+   * Token exchange (RFC 8693) de la app única: con el token de acceso actual (p. ej. de pasajero) pide una sesión
+   * para otro cliente (p. ej. intitaxi-driver) firmando con la MISMA clave DPoP. No cambia los tokens de este
+   * dispositivo: el resultado trae los del cliente de destino.
+   */
+  tokenExchange(clientId: string, subjectToken = this.accessToken) {
+    return this.call(
+      'auth',
+      'POST',
+      '/oauth/token',
+      { grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange', subject_token: subjectToken, subject_token_type: 'urn:ietf:params:oauth:token-type:access_token', client_id: clientId },
+      { auth: false, form: true },
+    );
+  }
+
   async refresh() {
     const t = await this.call('auth', 'POST', '/oauth/token', { grant_type: 'refresh_token', refresh_token: this.refreshToken, client_id: this.clientId }, { auth: false, form: true });
     if (t.status === 200) {

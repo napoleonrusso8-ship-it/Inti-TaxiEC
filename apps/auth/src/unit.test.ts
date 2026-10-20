@@ -75,6 +75,12 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: 'development', LOCAL_MASTER_KEY: k })).not.toThrow();
   });
 
+  it('app única: acepta su paquete y tolera integridad básica solo en paquetes de pasajero', () => {
+    const c = loadConfig({ ...base, NODE_ENV: 'development', LOCAL_MASTER_KEY: k });
+    expect(c.ANDROID_PACKAGE_NAMES).toEqual(['ec.intitaxi.app', 'ec.intitaxi.passenger', 'ec.intitaxi.driver']);
+    expect(c.PLAY_INTEGRITY_ALLOW_BASIC_PACKAGES).toEqual(['ec.intitaxi.app', 'ec.intitaxi.passenger']);
+  });
+
   it('impide arrancar producción con claves locales, atestación dev o proveedores de consola', () => {
     let msg = '';
     try {

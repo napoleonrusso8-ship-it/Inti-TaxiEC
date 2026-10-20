@@ -34,13 +34,13 @@ export function DriverProfile({ driver, title }: { driver: DriverCard; title?: s
           </View>
         ) : null}
       </Row>
-      {driver.tags.length || driver.badges.ally || driver.badges.womenRides ? (
+      {driver.tags.length || driver.badges.ally || driver.badges.ellxs ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
           {driver.tags.map((t) => (
             <Tag key={t.tag} label={t.label} count={t.count} />
           ))}
           {driver.badges.ally ? <Tag label="🌈 Aliado" /> : null}
-          {driver.badges.womenRides ? <Tag label="✦ Conductora" /> : null}
+          {driver.badges.ellxs ? <Tag label="🌈 Ellxs" /> : null}
         </View>
       ) : null}
       <P muted>Comprueba la placa antes de subir. Si no te convence, puedes pedir otra unidad.</P>

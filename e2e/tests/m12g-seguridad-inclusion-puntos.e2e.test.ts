@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { adminSession, completedTrip, MALL_DEL_SOL, offerFor, onlineDriver, requestTrip, startedTrip, waitFor } from '../src/flows.js';
+import { adminSession, completedTrip, grantConsent, MALL_DEL_SOL, offerFor, onlineDriver, requestTrip, startedTrip, waitFor } from '../src/flows.js';
 import { Stack } from '../src/stack.js';
 
 const s = new Stack();
@@ -30,25 +30,57 @@ describe('Nombre de preferencia', () => {
   });
 });
 
-describe('Modo Ella y Conductor Aliado', () => {
-  it('Modo Ella: solo conductoras habilitadas por una persona del equipo reciben el viaje', async () => {
+describe('Modo Ellxs y Conductor Aliado', () => {
+  it('Modo Ellxs: exige consentimiento; solo conductorxs Ellxs aprobadxs por una persona del equipo reciben el viaje', async () => {
     await s.redis.del('drivers:available');
     const man = await onlineDriver(s, zone(2), 4, reviewer.web);
     const p = await s.loggedIn();
-    expect((await requestTrip(p.d, { womenOnly: true }, zone(2))).body.title).toBe('women_only_not_enabled');
-    await p.d.call('api', 'PUT', '/v1/me/preferences', { selfIdentifiesWoman: true });
-    const t = await requestTrip(p.d, { womenOnly: true }, zone(2));
+    expect((await requestTrip(p.d, { ellxsOnly: true }, zone(2))).body.title).toBe('ellxs_not_enabled');
+    // Dato sensible (LOPDP art. 26): sin el consentimiento 'ellxs' no se guarda la autodeclaración.
+    const noConsent = await p.d.call('api', 'PUT', '/v1/me/preferences', { ellxsMember: true });
+    expect(noConsent.status).toBe(409);
+    expect(noConsent.body.title).toBe('consent_required');
+    const text = await p.d.call('api', 'GET', '/v1/consents/texts/ellxs', undefined, { auth: false });
+    expect(text.body.body).toContain('mujer o que formas parte de la comunidad LGBTI');
+    expect((await grantConsent(p.d, 'ellxs')).status).toBe(201);
+    expect((await p.d.call('api', 'PUT', '/v1/me/preferences', { ellxsMember: true })).body.ellxsMember).toBe(true);
+    const t = await requestTrip(p.d, { ellxsOnly: true }, zone(2));
     expect(t.status).toBe(201);
+    expect(t.body.ellxsOnly).toBe(true);
     await new Promise((r) => setTimeout(r, 1500));
     expect((await man.d.call('api', 'GET', '/v1/driver/offers')).body.some((o: { tripId: string }) => o.tripId === t.body.id)).toBe(false);
-    const woman = await onlineDriver(s, zone(2), 4, reviewer.web);
-    await woman.d.call('api', 'POST', '/v1/driver/women-rides/request');
-    expect((await reviewer.web.call('api', 'GET', '/v1/admin/drivers/women-rides/pending')).body.some((x: { driverId: string }) => x.driverId === woman.userId)).toBe(true);
-    await reviewer.web.call('api', 'POST', `/v1/admin/drivers/${woman.userId}/women-rides`, { approve: true });
-    await woman.d.call('api', 'POST', `/v1/driver/offers/${await offerFor(woman.d, t.body.id, 10000)}/accept`);
+    const ellxs = await onlineDriver(s, zone(2), 4, reviewer.web);
+    expect((await ellxs.d.call('api', 'POST', '/v1/driver/ellxs/request')).body).toEqual({ status: 'pending_review' });
+    expect((await reviewer.web.call('api', 'GET', '/v1/admin/drivers/ellxs/pending')).body.some((x: { driverId: string }) => x.driverId === ellxs.userId)).toBe(true);
+    expect((await reviewer.web.call('api', 'POST', `/v1/admin/drivers/${ellxs.userId}/ellxs`, { approve: true })).body).toEqual({ driverId: ellxs.userId, ellxs: true });
+    const offers = await waitFor(() => ellxs.d.call('api', 'GET', '/v1/driver/offers'), (r) => r.body.some((o: { tripId: string }) => o.tripId === t.body.id), 10000);
+    expect(offers.body.find((o: { tripId: string }) => o.tripId === t.body.id).ellxsOnly).toBe(true);
+    await ellxs.d.call('api', 'POST', `/v1/driver/offers/${await offerFor(ellxs.d, t.body.id, 10000)}/accept`);
     const view = await p.d.call('api', 'GET', `/v1/trips/${t.body.id}`);
-    expect(view.body.driver.badges).toEqual({ ally: false, womenRides: true });
+    expect(view.body.driver.badges).toEqual({ ally: false, ellxs: true });
+    // La conductorx no ve la autodeclaración de la persona (solo que el viaje es Ellxs).
+    const dview = await ellxs.d.call('api', 'GET', `/v1/trips/${t.body.id}`);
+    expect(JSON.stringify(dview.body.passenger)).not.toMatch(/ellxs/i);
     await p.d.call('api', 'POST', `/v1/trips/${t.body.id}/cancel`, {});
+    // Las rutas antiguas ya no existen.
+    expect((await ellxs.d.call('api', 'POST', '/v1/driver/women-rides/request')).status).toBe(404);
+  });
+
+  it('Modo Ellxs: desactivarlo borra la autodeclaración y revoca el consentimiento; revocar el consentimiento también la borra', async () => {
+    const p = await s.loggedIn();
+    await grantConsent(p.d, 'ellxs');
+    await p.d.call('api', 'PUT', '/v1/me/preferences', { ellxsMember: true });
+    expect((await p.d.call('api', 'PUT', '/v1/me/preferences', { ellxsMember: false })).body.ellxsMember).toBe(false);
+    const consents = await p.d.call('api', 'GET', '/v1/consents');
+    expect(consents.body.find((c: { purpose: string }) => c.purpose === 'ellxs')).toMatchObject({ granted: false });
+    expect((await p.d.call('api', 'PUT', '/v1/me/preferences', { ellxsMember: true })).body.title).toBe('consent_required');
+    await grantConsent(p.d, 'ellxs');
+    await p.d.call('api', 'PUT', '/v1/me/preferences', { ellxsMember: true });
+    expect((await p.d.call('api', 'DELETE', '/v1/consents/ellxs')).status).toBe(204);
+    expect((await p.d.call('api', 'GET', '/v1/me/preferences')).body.ellxsMember).toBe(false);
+    // La auditoría no guarda el valor de la autodeclaración.
+    const audit = await s.pool.query(`SELECT metadata::text AS m FROM audit.audit_log WHERE action = 'passenger.preferences' AND resource_id = $1`, [p.userId]);
+    expect(audit.rows.every((r) => !/true|false/.test(r.m))).toBe(true);
   });
 
   it('Conductor Aliado: curso con preguntas; el filtro solo ofrece el viaje a aliados', async () => {

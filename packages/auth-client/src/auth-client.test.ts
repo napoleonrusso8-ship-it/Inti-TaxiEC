@@ -93,4 +93,24 @@ describe('TokenManager', () => {
     await tm.getAccessToken();
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
+
+  it('exchangeToken: pide el token exchange para su propio cliente y guarda el refresh token en su clave', async () => {
+    const store = new MemStore();
+    await store.set('intitaxi.refresh_token', 'rt-pasajero');
+    const fetchFn = vi.fn<Fetch>(async () => okResponse(7));
+    const tm = new TokenManager({ ...cfg, clientId: 'intitaxi-driver', refreshTokenKey: 'intitaxi.refresh_token.driver' }, await makeSigner(), store, fetchFn);
+    await tm.exchangeToken('at-pasajero');
+    const init = fetchFn.mock.calls[0]![1];
+    const form = new URLSearchParams(init.body);
+    expect(Object.fromEntries(form)).toEqual({
+      grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
+      subject_token: 'at-pasajero',
+      subject_token_type: 'urn:ietf:params:oauth:token-type:access_token',
+      client_id: 'intitaxi-driver',
+    });
+    expect(init.headers.DPoP).toMatch(/^ey/);
+    expect(await tm.getAccessToken()).toBe('at7');
+    expect(await store.get('intitaxi.refresh_token.driver')).toBe('rt7');
+    expect(await store.get('intitaxi.refresh_token')).toBe('rt-pasajero');
+  });
 });

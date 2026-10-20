@@ -257,17 +257,19 @@ export class RoutesAdminService {
     return rows;
   }
 
-  async enable(adminId: string, routeId: string, driverId: string, req: AppRequest) {
-    const d = await this.pool.query(`SELECT 1 FROM drivers.profiles WHERE user_id = $1 AND status = 'approved'`, [driverId]);
+  /** Habilita a un conductor aprobado en la ruta (idempotente). También la usa la aprobación de una solicitud desde la app. */
+  async enable(adminId: string, routeId: string, driverId: string, req: AppRequest, tx?: PoolClient) {
+    const c = tx ?? this.pool;
+    const d = await c.query(`SELECT 1 FROM drivers.profiles WHERE user_id = $1 AND status = 'approved'`, [driverId]);
     if (!d.rowCount) throw new AppError(409, 'driver_not_approved', 'Solo se habilitan conductores aprobados');
-    await this.pool
-      .query(`INSERT INTO fixed_routes.driver_enablements (driver_id, route_id, enabled_by) VALUES ($1, $2, $3)`, [driverId, routeId, adminId])
-      .catch((e: { code?: string }) => {
-        if (e.code === '23505') return;
-        if (e.code === '23503') throw new AppError(404, 'not_found', 'Ruta no encontrada');
-        throw e;
-      });
-    await this.audit.record({ action: 'route.driver_enable', resourceType: 'route', resourceId: routeId, metadata: { driverId } }, req);
+    // Si ya está habilitado no se inserta (un error dentro de una transacción la invalidaría).
+    const active = await c.query(`SELECT 1 FROM fixed_routes.driver_enablements WHERE driver_id = $1 AND route_id = $2 AND revoked_at IS NULL`, [driverId, routeId]);
+    if (!active.rowCount) {
+      const route = await c.query(`SELECT 1 FROM fixed_routes.routes WHERE id = $1`, [routeId]);
+      if (!route.rowCount) throw new AppError(404, 'not_found', 'Ruta no encontrada');
+      await c.query(`INSERT INTO fixed_routes.driver_enablements (driver_id, route_id, enabled_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [driverId, routeId, adminId]);
+    }
+    await this.audit.record({ action: 'route.driver_enable', resourceType: 'route', resourceId: routeId, metadata: { driverId } }, req, tx);
     return { routeId, driverId, enabled: true };
   }
 

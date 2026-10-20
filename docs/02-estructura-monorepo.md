@@ -33,7 +33,7 @@ inti-taxi/
 │   ├── workers/                  # Notificaciones, retención/borrado, antifraude, conciliación
 │   ├── admin-web/                # Panel admin (Next.js) — sin SSR de datos sensibles en caché
 │   ├── tracking-web/             # Página pública de seguimiento por enlace firmado (terceros sin app)
-│   ├── mobile-passenger/         # React Native — pasajero
+│   ├── mobile/                   # React Native — app única (pasajeros y socios)
 │   └── mobile-driver/            # React Native — conductor
 ├── packages/
 │   ├── domain/                   # tipos y reglas puras: cédula (mód. 10), tarifas por franja, máquina de estados del viaje

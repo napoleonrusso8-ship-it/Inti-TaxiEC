@@ -3,6 +3,6 @@ import { AdminCommunityController, CommunityController, DriverCommunityControlle
 import { CommunityService } from './community.service.js';
 import { SafetyMonitorService } from './safety-monitor.service.js';
 
-/** Comunidad: preferencias, inclusión (Modo Ella, Conductor Aliado), Inti Puntos y alerta de desvío. */
+/** Comunidad: preferencias, inclusión (Modo Ellxs, Conductor Aliado), Inti Puntos y alerta de desvío. */
 @Module({ controllers: [CommunityController, DriverCommunityController, AdminCommunityController], providers: [CommunityService, SafetyMonitorService] })
 export class CommunityModule {}

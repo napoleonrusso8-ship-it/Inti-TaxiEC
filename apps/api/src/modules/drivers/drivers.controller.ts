@@ -8,13 +8,35 @@ import { LocalStorage, type StoragePort } from '../../infra/storage.js';
 import { STORAGE } from '../../tokens.js';
 import { AdminGuard, AdminRoles, AdminWrite } from '../admin/admin.guard.js';
 import { DriversService } from './drivers.service.js';
-import { PROFESSIONAL_LICENSE_CATEGORIES } from './eligibility.js';
+import { PARTNER_KINDS, PROFESSIONAL_LICENSE_CATEGORIES } from './eligibility.js';
 
 const DRIVER_CLIENT = 'intitaxi-driver';
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const requireDriverApp = (auth: AuthContext) => {
   if (auth.clientId !== DRIVER_CLIENT) throw new AppError(403, 'forbidden', 'Usa la app de conductor');
 };
+
+/**
+ * Solicitud de socio. Sin `partnerKind` = conductor de taxi (compatibilidad con la app anterior).
+ * La empresa de alquiler envía razón social y RUC en lugar de la licencia; los demás tipos, la licencia.
+ */
+const ApplicationBody = z
+  .object({
+    partnerKind: z.enum(PARTNER_KINDS).default('taxi_driver'),
+    licenseNumber: z.string().min(6).max(20).regex(/^[A-Za-z0-9 -]+$/).optional(),
+    licenseCategory: z.enum(PROFESSIONAL_LICENSE_CATEGORIES as [string, ...string[]]).optional(),
+    licenseExpiresOn: isoDate.optional(),
+    company: z.object({ businessName: z.string().trim().min(3).max(120).regex(/^[\p{L}\p{N} .,&'()-]+$/u), ruc: z.string().trim().max(20) }).strict().optional(),
+  })
+  .superRefine((b, ctx) => {
+    if (b.partnerKind === 'rental_company') {
+      if (!b.company) ctx.addIssue({ code: 'custom', path: ['company'], message: 'requerido' });
+      return;
+    }
+    for (const k of ['licenseNumber', 'licenseCategory', 'licenseExpiresOn'] as const) if (!b[k]) ctx.addIssue({ code: 'custom', path: [k], message: 'requerido' });
+    if (b.company) ctx.addIssue({ code: 'custom', path: ['company'], message: 'solo para empresas de alquiler' });
+  });
+export type ApplicationInput = z.output<typeof ApplicationBody>;
 
 @Controller('v1/driver')
 @UseGuards(AccessTokenGuard, AttestationGuard)
@@ -25,11 +47,7 @@ export class DriverController {
   @HttpCode(201)
   apply(@Req() req: AppRequest, @Auth() auth: AuthContext, @Body() body: unknown) {
     requireDriverApp(auth);
-    const input = parseInput(
-      z.object({ licenseNumber: z.string().min(6).max(20).regex(/^[A-Za-z0-9 -]+$/), licenseCategory: z.enum(PROFESSIONAL_LICENSE_CATEGORIES as [string, ...string[]]), licenseExpiresOn: isoDate }),
-      body,
-    );
-    return this.drivers.apply(auth.userId, input, req);
+    return this.drivers.apply(auth.userId, parseInput(ApplicationBody, body), req);
   }
 
   @Get('profile')
@@ -64,7 +82,7 @@ export class DriverController {
     requireDriverApp(auth);
     const d = parseInput(
       z.object({
-        type: z.enum(['license', 'background_check', 'registration', 'insurance']),
+        type: z.enum(['license', 'background_check', 'company_ruc', 'registration', 'insurance']),
         vehicleId: z.string().uuid().optional(),
         contentType: z.enum(ALLOWED_CONTENT_TYPES as [string, ...string[]]),
         size: z.number().int().min(1).max(MAX_DOCUMENT_BYTES),

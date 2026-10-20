@@ -85,18 +85,18 @@ export class MatchingService implements OnModuleInit, OnModuleDestroy {
     return result.kind;
   }
 
-  /** Modo Ella, Conductor Aliado y equipamiento requerido (mascota, silla de ruedas). */
+  /** Modo Ellxs, Conductor Aliado y equipamiento requerido (mascota, silla de ruedas). */
   async #meetsRequirements(c: PoolClient, driverId: string, vehicleId: string, trip: MatchingTrip) {
-    const t = trip as MatchingTrip & { women_only?: boolean; ally_only?: boolean; prefs?: { pet?: boolean; wheelchair?: boolean } };
-    if (!t.women_only && !t.ally_only && !t.prefs?.pet && !t.prefs?.wheelchair) return true;
-    const { rows } = await c.query<{ women: boolean; ally: boolean; features: string[] }>(
-      `SELECT p.women_rides_approved_at IS NOT NULL AS women, p.ally_certified_at IS NOT NULL AS ally, v.features
+    const t = trip as MatchingTrip & { ellxs_only?: boolean; ally_only?: boolean; prefs?: { pet?: boolean; wheelchair?: boolean } };
+    if (!t.ellxs_only && !t.ally_only && !t.prefs?.pet && !t.prefs?.wheelchair) return true;
+    const { rows } = await c.query<{ ellxs: boolean; ally: boolean; features: string[] }>(
+      `SELECT p.ellxs_approved_at IS NOT NULL AS ellxs, p.ally_certified_at IS NOT NULL AS ally, v.features
        FROM drivers.profiles p JOIN drivers.vehicles v ON v.driver_id = p.user_id WHERE p.user_id = $1 AND v.id = $2`,
       [driverId, vehicleId],
     );
     const d = rows[0];
     if (!d) return false;
-    if (t.women_only && !d.women) return false;
+    if (t.ellxs_only && !d.ellxs) return false;
     if (t.ally_only && !d.ally) return false;
     if (t.prefs?.pet && !d.features.includes('pet_friendly')) return false;
     if (t.prefs?.wheelchair && !d.features.includes('wheelchair')) return false;
@@ -119,7 +119,7 @@ export class MatchingService implements OnModuleInit, OnModuleDestroy {
     const { rows } = await this.pool.query(
       `SELECT o.id AS "offerId", o.trip_id AS "tripId", o.expires_at AS "expiresAt", o.distance_m AS "pickupDistanceM",
               t.origin_lat AS "originLat", t.origin_lng AS "originLng", t.dest_lat AS "destLat", t.dest_lng AS "destLng",
-              t.quoted_fare_cents AS "fareCents", t.surge_cents AS "surgeCents", t.prefs, t.women_only AS "womenOnly", t.ally_only AS "allyOnly", t.distance_m AS "tripDistanceM", t.party_size AS "partySize", t.payment_method AS "paymentMethod",
+              t.quoted_fare_cents AS "fareCents", t.surge_cents AS "surgeCents", t.prefs, t.ellxs_only AS "ellxsOnly", t.ally_only AS "allyOnly", t.distance_m AS "tripDistanceM", t.party_size AS "partySize", t.payment_method AS "paymentMethod",
               -- Reputación del pasajero visible antes de aceptar.
               (SELECT round(avg(stars), 1)::float8 FROM trips.ratings r WHERE r.ratee_user_id = t.requester_user_id) AS "passengerRating",
               (SELECT count(*)::int FROM trips.trips x WHERE x.requester_user_id = t.requester_user_id AND x.status = 'completed') AS "passengerTrips"

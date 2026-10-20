@@ -17,4 +17,4 @@ if (!devices.length) {
 }
 for (const p of PORTS) adb('reverse', `tcp:${p}`, `tcp:${p}`);
 console.log(`\nListo: el teléfono usa localhost:${PORTS.join(', ')} de esta computadora.`);
-console.log('Ahora: pnpm dev (servidores) y, en otra terminal, pnpm --filter @intitaxi/mobile-passenger start');
+console.log('Ahora: pnpm dev (servidores) y, en otra terminal, pnpm --filter @intitaxi/mobile start');

@@ -24,7 +24,7 @@ export interface DriverCard {
   tripsCount: number;
   activeSince: number | null;
   tags: { tag: string; label: string; count: number }[];
-  badges: { ally: boolean; womenRides: boolean };
+  badges: { ally: boolean; ellxs: boolean };
 }
 
 export interface TripPrefs {
@@ -116,7 +116,7 @@ export function passengerApi(c: ApiClient) {
     // Viajes
     quote: (origin: LatLng, destination: LatLng, originLabel?: string, destinationLabel?: string) =>
       c.call<QuoteView>('api', 'POST', '/v1/trips/quotes', { origin, destination, originLabel, destinationLabel }),
-    requestTrip: (input: { quoteId: string; paymentMethod: PaymentMethod; paymentMethodId?: string; companions?: Person[]; forThirdParty?: Person; prefs?: TripPrefs; womenOnly?: boolean; allyOnly?: boolean }) =>
+    requestTrip: (input: { quoteId: string; paymentMethod: PaymentMethod; paymentMethodId?: string; companions?: Person[]; forThirdParty?: Person; prefs?: TripPrefs; ellxsOnly?: boolean; allyOnly?: boolean }) =>
       c.call<TripView>('api', 'POST', '/v1/trips', input, { idempotencyKey: idempotencyKey() }),
     trip: (id: string) => c.call<TripView>('api', 'GET', `/v1/trips/${id}`),
     history: () => c.call<{ id: string; status: string; fareCents: number; finalFareCents: number | null; requestedAt: string }[]>('api', 'GET', '/v1/trips'),
@@ -140,8 +140,8 @@ export function passengerApi(c: ApiClient) {
     answerSafetyCheck: (id: string, checkId: string, ok: boolean) => c.call('api', 'POST', `/v1/trips/${id}/safety-checks/${checkId}`, { ok }),
 
     // Perfil, inclusión y puntos
-    preferences: () => c.call<{ chosenName: string | null; selfIdentifiesWoman: boolean; deviationAlerts: 'night' | 'always' | 'off'; defaultPrefs: TripPrefs }>('api', 'GET', '/v1/me/preferences'),
-    setPreferences: (p: { chosenName?: string | null; selfIdentifiesWoman?: boolean; deviationAlerts?: 'night' | 'always' | 'off'; defaultPrefs?: TripPrefs }) => c.call('api', 'PUT', '/v1/me/preferences', p),
+    preferences: () => c.call<{ chosenName: string | null; ellxsMember: boolean; deviationAlerts: 'night' | 'always' | 'off'; defaultPrefs: TripPrefs }>('api', 'GET', '/v1/me/preferences'),
+    setPreferences: (p: { chosenName?: string | null; ellxsMember?: boolean; deviationAlerts?: 'night' | 'always' | 'off'; defaultPrefs?: TripPrefs }) => c.call('api', 'PUT', '/v1/me/preferences', p),
     loyalty: () => c.call<{ points: number; valueCents: number; rules: { redeemUnit: number; redeemMin: number; monthlyMax: number }; history: { points: number; kind: string; at: string }[] }>('api', 'GET', '/v1/loyalty'),
     redeem: (points: number) => c.call<{ creditedCents: number; balance: number }>('api', 'POST', '/v1/loyalty/redeem', { points }),
 

@@ -17,12 +17,14 @@ type Category = (typeof CATEGORIES)[number]['value'];
 const KIND_LABEL = { voice: '🎤 Nota de voz', photo: '📷 Foto', video: '🎬 Video' } as const;
 
 /**
- * Reportar al conductor. Un agente de Confianza y Seguridad revisa el caso, contacta a ambas partes
+ * Reportar al conductor (o, en modo socio, al pasajero). Un agente de Confianza y Seguridad revisa el caso, contacta a ambas partes
  * y solo sanciona si hay pruebas (chat del viaje, archivos marcados, GPS). El chat y los archivos
  * quedan retenidos mientras dure la investigación.
  */
-export function Report({ tripId }: { tripId: string }) {
-  const { api } = useSession();
+export function Report({ tripId, as = 'passenger' }: { tripId: string; as?: 'passenger' | 'driver' }) {
+  const s = useSession();
+  const api = as === 'driver' ? s.partner.api : s.api;
+  const other = as === 'driver' ? 'pasajero' : 'conductor';
   const nav = useNav();
   const [category, setCategory] = useState<Category>('mistreatment');
   const [description, setDescription] = useState('');
@@ -45,7 +47,7 @@ export function Report({ tripId }: { tripId: string }) {
       </Screen>
     );
   return (
-    <Screen title="Reportar al conductor">
+    <Screen title={`Reportar al ${other}`}>
       <P muted>Si estás en peligro ahora, usa el botón SOS. Este formulario es para revisar lo ocurrido con calma.</P>
       <Card>
         <P style={{ fontWeight: '700' }}>¿Qué pasó?</P>
@@ -60,13 +62,13 @@ export function Report({ tripId }: { tripId: string }) {
           {media.map((m) => (
             <Pressable key={m.mediaId} onPress={() => toggle(m.mediaId!)} accessibilityRole="checkbox" accessibilityState={{ checked: evidence.includes(m.mediaId!) }}>
               <Text style={{ color: evidence.includes(m.mediaId!) ? C.brand2 : C.ink, paddingVertical: 6 }}>
-                {evidence.includes(m.mediaId!) ? '☑' : '☐'} {KIND_LABEL[m.kind!]} · {m.from === 'driver' ? 'del conductor' : 'tuya'} · {new Date(m.at).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}
+                {evidence.includes(m.mediaId!) ? '☑' : '☐'} {KIND_LABEL[m.kind!]} · {m.from === as ? 'tuya' : `del ${other}`} · {new Date(m.at).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })}
               </Text>
             </Pressable>
           ))}
         </Card>
       ) : null}
-      <P muted>Los reportes falsos o malintencionados también se sancionan. El conductor no verá tus datos de contacto.</P>
+      <P muted>Los reportes falsos o malintencionados también se sancionan. El {other} no verá tus datos de contacto.</P>
       <ErrorText error={error} />
       <Button label="Enviar reporte" kind="danger" loading={busy} disabled={description.trim().length < 20} onPress={() => run(async () => setDone((await api.report(tripId, category, description.trim(), evidence)).message))} />
     </Screen>

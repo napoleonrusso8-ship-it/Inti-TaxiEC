@@ -4,6 +4,7 @@ import { AccessTokenGuard, AppError, AttestationGuard, Auth, Device, parseInput,
 import { z } from 'zod';
 import { AdminGuard, AdminRoles, AdminWrite } from '../admin/admin.guard.js';
 import { FixedRoutesService } from './fixed-routes.service.js';
+import { RouteEnablementService } from './route-enablement.service.js';
 import { RoutesAdminService } from './routes-admin.service.js';
 
 const direction = z.enum(['outbound', 'inbound']);
@@ -89,11 +90,30 @@ export class RoutesController {
 @Controller('v1/driver')
 @UseGuards(AccessTokenGuard, AttestationGuard)
 export class DriverRoutesController {
-  constructor(@Inject(FixedRoutesService) private readonly routes: FixedRoutesService) {}
+  constructor(
+    @Inject(FixedRoutesService) private readonly routes: FixedRoutesService,
+    @Inject(RouteEnablementService) private readonly enablement: RouteEnablementService,
+  ) {}
 
   @Get('routes')
   enabled(@Auth() auth: AuthContext) {
     return this.routes.enabledRoutes(auth.userId);
+  }
+
+  /** Rutas activas: si ya está habilitado o el estado de su última solicitud. */
+  @Get('routes/catalog')
+  catalog(@Auth() auth: AuthContext) {
+    requireClient(auth, 'intitaxi-driver');
+    return this.enablement.catalog(auth.userId);
+  }
+
+  /** Pedir trabajar en una ruta con un vehículo aprobado (dueños de taxi amarillo y de furgoneta). */
+  @Post('routes/:id/enablement-requests')
+  @HttpCode(201)
+  requestEnablement(@Req() req: AppRequest, @Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    requireClient(auth, 'intitaxi-driver');
+    const i = parseInput(z.object({ vehicleId: z.string().uuid() }), body);
+    return this.enablement.request(auth.userId, id, i.vehicleId, req);
   }
 
   @Post('routes/:id/instances')
@@ -153,11 +173,28 @@ const fareInput = z.object({
 @UseGuards(AccessTokenGuard, AdminGuard)
 @AdminRoles('route_manager')
 export class AdminRoutesController {
-  constructor(@Inject(RoutesAdminService) private readonly admin: RoutesAdminService) {}
+  constructor(
+    @Inject(RoutesAdminService) private readonly admin: RoutesAdminService,
+    @Inject(RouteEnablementService) private readonly enablement: RouteEnablementService,
+  ) {}
 
   @Get()
   list() {
     return this.admin.list();
+  }
+
+  // Antes de las rutas con ':id' para que "enablement-requests" no se tome como un id.
+  @Get('enablement-requests')
+  enablementRequests(@Query('status') status = 'pending') {
+    return this.enablement.list(parseInput(z.enum(['pending', 'approved', 'rejected']), status));
+  }
+
+  @Post('enablement-requests/:id/decision')
+  @HttpCode(200)
+  @AdminWrite()
+  decideEnablement(@Req() req: AppRequest, @Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    const i = parseInput(z.object({ approve: z.boolean(), reason: text(300).optional() }), body);
+    return this.enablement.decide(auth.userId, id, i.approve, i.reason, req);
   }
 
   @Post()

@@ -1,14 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { AuditService, OAuthError, OneTimeStore, RedisSessionRevocation, type AppRequest } from '@intitaxi/nest-common';
+import { AuditService, OAuthError, OneTimeStore, RateLimiter, RedisSessionRevocation, tooManyRequests, type AppRequest } from '@intitaxi/nest-common';
 import { ACR_BASIC } from '@intitaxi/auth-verifier';
 import { constantTimeEqual, randomToken, sha256, sha256Base64Url } from '@intitaxi/crypto';
 import { withTransaction, type Pool, type PoolClient } from '@intitaxi/db';
 import { randomUUID } from 'node:crypto';
+import { jwtVerify } from 'jose';
 import { SigningKeys } from '../../common/signing-keys.js';
 import type { AppConfig } from '../../config.js';
 import { CONFIG, PG_POOL } from '../../tokens.js';
 
 export const MOBILE_CLIENTS = ['intitaxi-passenger', 'intitaxi-driver'];
+export const TOKEN_EXCHANGE_GRANT = 'urn:ietf:params:oauth:grant-type:token-exchange';
+/** Cambios de cliente por usuario y hora (la app los hace al pasar de pasajero a socio y viceversa). */
+export const CLIENT_SWITCH_LIMIT = { max: 10, windowSeconds: 3600 };
 export const ADMIN_CLIENT = 'intitaxi-admin';
 
 export interface AuthCodeGrant {
@@ -56,6 +60,7 @@ export class TokenService {
     @Inject(OneTimeStore) private readonly once: OneTimeStore,
     @Inject(RedisSessionRevocation) private readonly revocation: RedisSessionRevocation,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(RateLimiter) private readonly limiter: RateLimiter,
   ) {}
 
   /** Código de autorización de un solo uso (60 s), ligado a PKCE y a la clave DPoP del dispositivo. */
@@ -147,6 +152,82 @@ export class TokenService {
       expires_in: this.config.ACCESS_TOKEN_TTL_SECONDS,
       refresh_token: newToken,
     };
+  }
+
+  /**
+   * Token exchange (RFC 8693) para la app única: con un token de acceso de este servidor (cliente pasajero) obtiene
+   * una sesión NUEVA para el otro cliente móvil (socio) sin otro SMS. Reglas:
+   * - la prueba DPoP de esta petición debe ser de la MISMA clave que liga el token (cnf.jkt): no se puede usar
+   *   un token robado desde otro dispositivo;
+   * - solo entre clientes móviles distintos; la sesión de origen debe seguir activa (no revocada ni vencida) y el
+   *   usuario activo;
+   * - se copian acr/amr/auth_time de la sesión de origen: cambiar de app no eleva la autenticación;
+   * - mismo dispositivo y misma clave DPoP; refresh token rotativo como cualquier sesión.
+   */
+  async exchangeToken(input: { subjectToken: string; clientId: string; jkt: string }, req: AppRequest): Promise<TokenResponse> {
+    this.#assertClient(input.clientId);
+    if (!MOBILE_CLIENTS.includes(input.clientId)) throw new OAuthError('invalid_target');
+    let claims: { sub: string; sid: string; did: string; client_id: string; jkt: string };
+    try {
+      const { payload } = await jwtVerify(input.subjectToken, this.keys.getKey, {
+        issuer: this.config.PUBLIC_BASE_URL,
+        audience: this.config.API_AUDIENCE,
+        typ: 'at+jwt',
+        algorithms: ['ES256'],
+        requiredClaims: ['sub', 'exp', 'iat', 'sid', 'cnf'],
+        clockTolerance: 5,
+      });
+      claims = { sub: payload.sub!, sid: String(payload.sid), did: String(payload.did ?? ''), client_id: String(payload.client_id ?? ''), jkt: String((payload.cnf as { jkt?: unknown })?.jkt ?? '') };
+    } catch {
+      throw new OAuthError('invalid_grant');
+    }
+    const deny = async (reason: string) => {
+      await this.audit.recordSafe({ action: 'session.client_switch', resourceType: 'session', resourceId: claims.sid, outcome: 'denied', actorUserId: claims.sub, metadata: { reason, from: claims.client_id, to: input.clientId } }, req);
+      return new OAuthError('invalid_grant');
+    };
+    if (claims.jkt !== input.jkt) throw await deny('dpop_key_mismatch');
+    if (!MOBILE_CLIENTS.includes(claims.client_id) || claims.client_id === input.clientId) throw new OAuthError('invalid_target');
+    const rl = await this.limiter.hit(`client-switch:${claims.sub}`, CLIENT_SWITCH_LIMIT.max, CLIENT_SWITCH_LIMIT.windowSeconds);
+    if (!rl.allowed) throw tooManyRequests(rl.retryAfterSeconds);
+    if (await this.revocation.isSessionRevoked(claims.sid)) throw await deny('session_revoked');
+
+    const refreshToken = randomToken(32);
+    const sessionId = randomUUID();
+    const replaced: string[] = [];
+    const session = await withTransaction(this.pool, async (c) => {
+      const { rows } = await c.query<SessionRow>(
+        `SELECT s.*, u.status AS user_status, u.sensitive_ops_locked_until FROM identity.sessions s JOIN identity.users u ON u.id = s.user_id
+         WHERE s.id = $1 FOR SHARE OF s`,
+        [claims.sid],
+      );
+      const src = rows[0];
+      if (!src || src.user_id !== claims.sub || src.client_id !== claims.client_id || src.device_id !== claims.did || src.dpop_jkt !== input.jkt ||
+        src.revoked_at || src.expires_at < new Date() || src.user_status !== 'active') {
+        return null;
+      }
+      // Una sola sesión por dispositivo y cliente de destino: la anterior (si la hay) se cierra.
+      const old = await c.query<{ id: string }>(
+        `UPDATE identity.sessions SET revoked_at = now(), revoke_reason = 'client_switch_replaced'
+         WHERE user_id = $1 AND device_id = $2 AND client_id = $3 AND revoked_at IS NULL RETURNING id`,
+        [src.user_id, src.device_id, input.clientId],
+      );
+      replaced.push(...old.rows.map((r) => r.id));
+      const ins = await c.query<SessionRow>(
+        `INSERT INTO identity.sessions (id, user_id, device_id, client_id, dpop_jkt, current_token_hash, acr, amr, auth_time, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now() + make_interval(secs => $10::float8 * 86400))
+         RETURNING *, 'active' AS user_status, $11::timestamptz AS sensitive_ops_locked_until`,
+        [sessionId, src.user_id, src.device_id, input.clientId, src.dpop_jkt, sha256(refreshToken), src.acr, src.amr, src.auth_time, this.config.REFRESH_TOKEN_TTL_DAYS, src.sensitive_ops_locked_until ?? null],
+      );
+      await this.audit.record(
+        { action: 'session.client_switch', resourceType: 'session', resourceId: sessionId, actorUserId: src.user_id, actorDeviceId: src.device_id, metadata: { from: src.client_id, to: input.clientId, fromSession: src.id } },
+        req,
+        c,
+      );
+      return ins.rows[0]!;
+    });
+    if (!session) throw await deny('session_inactive');
+    await Promise.all(replaced.map((id) => this.revocation.revoke(id)));
+    return { access_token: await this.#accessToken(session), token_type: 'DPoP', expires_in: this.config.ACCESS_TOKEN_TTL_SECONDS, refresh_token: refreshToken };
   }
 
   /** Eleva la sesión tras un step-up (acr mfa o phr) y devuelve un token de acceso nuevo. */

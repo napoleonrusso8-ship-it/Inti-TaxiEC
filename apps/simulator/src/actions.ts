@@ -79,6 +79,13 @@ export const actions: Record<string, Handler> = {
     return r;
   },
   'phone.confirm': (e, p) => e.device.call('auth', 'POST', '/v1/auth/phone/change/confirm', { challengeId: e.data.phoneChallengeId, code: p.code }),
+  /** App única: con la sesión de pasajero obtiene la de socio sin otro SMS (RFC 8693) y la prueba en la API de socio. */
+  'token.exchange': async (e) => {
+    const x = await e.device.tokenExchange('intitaxi-driver');
+    if (x.status !== 200) return x;
+    const profile = await e.device.call('api', 'GET', '/v1/driver/profile', undefined, { accessToken: x.body.access_token });
+    return ok({ info: 'Sesión de socio creada en este dispositivo (misma clave DPoP, mismo nivel de autenticación)', expiresIn: x.body.expires_in, perfilDeSocio: { status: profile.status, body: profile.body } });
+  },
   'token.forget': async (e) => {
     e.device.accessToken = '';
     return ok({ info: 'Token de acceso descartado en el simulador (la sesión sigue viva con el refresh token)' });
@@ -112,9 +119,16 @@ export const actions: Record<string, Handler> = {
 
   // ----- Módulo 3: onboarding de conductores -----
   'driver.apply': (e, p) =>
-    e.device.call('api', 'POST', '/v1/driver/application', { licenseNumber: p.licenseNumber, licenseCategory: p.licenseCategory, licenseExpiresOn: p.licenseExpiresOn }),
+    e.device.call(
+      'api',
+      'POST',
+      '/v1/driver/application',
+      p.partnerKind === 'rental_company'
+        ? { partnerKind: p.partnerKind, company: { businessName: p.businessName, ruc: p.ruc } }
+        : { partnerKind: p.partnerKind || 'taxi_driver', licenseNumber: p.licenseNumber, licenseCategory: p.licenseCategory, licenseExpiresOn: p.licenseExpiresOn },
+    ),
   'vehicle.add': async (e, p) => {
-    const r = await e.device.call('api', 'POST', '/v1/driver/vehicles', { plate: p.plate, make: p.make, model: p.model, year: Number(p.year), color: p.color, seats: Number(p.seats), vehicleType: p.vehicleType || 'taxi' });
+    const r = await e.device.call('api', 'POST', '/v1/driver/vehicles', { plate: p.plate, make: p.make, model: p.model, year: Number(p.year), color: p.color, seats: Number(p.seats), vehicleType: p.vehicleType || 'taxi', ...(p.vehicleType === 'rental' ? { rentalCategory: p.rentalCategory || 'auto' } : {}) });
     if (r.status === 201) e.data.vehicleId = r.body.id;
     return r;
   },
@@ -149,7 +163,7 @@ export const actions: Record<string, Handler> = {
       const cards = await e.device.call('api', 'GET', '/v1/payment-methods');
       paymentMethodId = cards.body?.find((c: { status: string }) => c.status === 'active')?.id;
     }
-    const r = await e.device.call('api', 'POST', '/v1/trips', { quoteId: e.data.quoteId, paymentMethod: p.paymentMethod ?? 'cash', paymentMethodId, ...(p.extra ?? {}) }, { headers: { 'Idempotency-Key': `sim-${Date.now()}-${Math.random().toString(36).slice(2, 12)}` } });
+    const r = await e.device.call('api', 'POST', '/v1/trips', { quoteId: e.data.quoteId, paymentMethod: p.paymentMethod ?? 'cash', paymentMethodId, ...(p.ellxsOnly === 'true' ? { ellxsOnly: true } : {}), ...(p.extra ?? {}) }, { headers: { 'Idempotency-Key': `sim-${Date.now()}-${Math.random().toString(36).slice(2, 12)}` } });
     if (r.status === 201) e.data.tripId = r.body.id;
     return r;
   },
@@ -204,6 +218,14 @@ export const actions: Record<string, Handler> = {
   'driver.start': (e, p) => e.device.call('api', 'POST', `/v1/driver/trips/${e.data.tripId}/start`, { pin: p.pin }),
   'driver.complete': (e) => e.device.call('api', 'POST', `/v1/driver/trips/${e.data.tripId}/complete`),
   'driver.current': (e) => e.device.call('api', 'GET', '/v1/driver/trips/current'),
+
+  // ----- Inclusión: Modo Ellxs (mujeres y personas LGBTI) -----
+  prefs: (e) => e.device.call('api', 'GET', '/v1/me/preferences'),
+  /** Activar exige antes el consentimiento "ellxs" (dato sensible); desactivar borra la autodeclaración. */
+  'prefs.ellxs': (e, p) => e.device.call('api', 'PUT', '/v1/me/preferences', { ellxsMember: p.on === 'true' }),
+  'driver.ellxs.request': (e) => e.device.call('api', 'POST', '/v1/driver/ellxs/request'),
+  'admin.ellxs.pending': (e) => e.device.call('api', 'GET', '/v1/admin/drivers/ellxs/pending'),
+  'admin.ellxs.decide': (e, p) => e.device.call('api', 'POST', `/v1/admin/drivers/${p.driverId}/ellxs`, { approve: p.approve === 'true' }),
 
   // ----- Módulo 6: tiempo real -----
   'driver.drive': async (e) => {
@@ -352,6 +374,15 @@ export const actions: Record<string, Handler> = {
     if (r.status === 200 && r.body[0]) e.data.routeId ??= r.body[0].id;
     return r;
   },
+  'droute.catalog': async (e) => {
+    const r = await e.device.call('api', 'GET', '/v1/driver/routes/catalog');
+    if (r.status === 200 && r.body[0]) e.data.routeId ??= r.body[0].id;
+    return r;
+  },
+  'droute.requestEnable': async (e, p) => {
+    const vehicleId = e.data.vehicleId ?? (await e.device.call('api', 'GET', '/v1/driver/profile')).body?.vehicles?.[0]?.id;
+    return e.device.call('api', 'POST', `/v1/driver/routes/${p.routeId || e.data.routeId}/enablement-requests`, { vehicleId });
+  },
   'droute.start': async (e, p) => {
     const vehicleId = e.data.vehicleId ?? (await e.device.call('api', 'GET', '/v1/driver/profile')).body?.vehicles?.[0]?.id;
     const r = await e.device.call('api', 'POST', `/v1/driver/routes/${p.routeId || e.data.routeId}/instances`, { direction: p.direction, vehicleId });
@@ -415,6 +446,12 @@ export const actions: Record<string, Handler> = {
   'admin.route.decide': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/publish-decision`, { approve: p.approve === 'true' }),
   'admin.route.pause': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/pause`, { reason: p.reason }),
   'admin.route.enable': (e, p) => e.device.call('api', 'POST', `/v1/admin/routes/${p.routeId}/drivers`, { driverId: p.driverId }),
+  'admin.route.requests': (e, p) => e.device.call('api', 'GET', `/v1/admin/routes/enablement-requests?status=${p.status || 'pending'}`),
+  'admin.route.requestDecide': async (e, p) => {
+    const requestId = p.requestId || (await e.device.call('api', 'GET', '/v1/admin/routes/enablement-requests?status=pending')).body?.[0]?.id;
+    if (!requestId) return { status: 404, body: { title: 'No hay solicitudes pendientes' } };
+    return e.device.call('api', 'POST', `/v1/admin/routes/enablement-requests/${requestId}/decision`, { approve: p.approve === 'true', reason: p.reason || undefined });
+  },
 
   // ----- Panel admin (módulo 3 y siguientes) -----
   'admin.me': (e) => e.device.call('api', 'GET', '/v1/admin/me'),

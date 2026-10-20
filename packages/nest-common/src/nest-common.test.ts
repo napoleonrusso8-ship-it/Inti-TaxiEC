@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { checkInfraConfig, infraEnvSchema } from './config.js';
 import { DevboxSender, InfobipSmsSender, SesEmailSender } from './notifier.js';
+import { AppError } from './errors.js';
+import { AttestationGuard } from './guards.js';
 
 describe('InfobipSmsSender', () => {
   it('envía con la API key en la cabecera y sin el "+"', async () => {
@@ -53,5 +55,26 @@ describe('checkInfraConfig', () => {
   });
   it('el token de acceso dura 10 minutos por defecto', () => {
     expect(infraEnvSchema.parse(base).ACCESS_TOKEN_TTL_SECONDS).toBe(600);
+  });
+});
+
+describe('AttestationGuard', () => {
+  const ticketed = (flags: string[]) => ({ get: async () => JSON.stringify({ deviceId: 'd1', platform: 'android', jkt: 'k1', flags }) });
+  const ctx = (clientId: string) => {
+    const req = { header: (h: string) => (h === 'x-attestation-ticket' ? 't' : undefined), auth: { clientId, jkt: 'k1', deviceId: 'd1' } } as never;
+    return { req: req as { device?: unknown }, ctx: { switchToHttp: () => ({ getRequest: () => req }) } as never };
+  };
+
+  it('el pasajero puede usar un teléfono con integridad básica (queda la señal de riesgo)', async () => {
+    const { req, ctx: c } = ctx('intitaxi-passenger');
+    expect(await new AttestationGuard(ticketed(['device_integrity_basic_only']) as never).canActivate(c)).toBe(true);
+    expect(req.device).toMatchObject({ flags: ['device_integrity_basic_only'] });
+  });
+
+  it('el socio (cliente intitaxi-driver) necesita integridad completa', async () => {
+    const err = await new AttestationGuard(ticketed(['device_integrity_basic_only']) as never).canActivate(ctx('intitaxi-driver').ctx).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AppError);
+    expect(err).toMatchObject({ status: 403, code: 'device_not_trusted' });
+    expect(await new AttestationGuard(ticketed(['dev_attestation']) as never).canActivate(ctx('intitaxi-driver').ctx)).toBe(true);
   });
 });

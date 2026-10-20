@@ -1,7 +1,8 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
 /**
- * Configuración nativa de la app de pasajero. Valores por build (EAS o local) mediante variables
+ * Configuración nativa de la app única de Inti Taxi (pasajeros y socios: conductores, dueños de
+ * taxi y furgoneta, empresas de alquiler y grúas). Valores por build (EAS o local) mediante variables
  * de entorno; ninguno es un secreto (la clave de Maps de Android se restringe por paquete + firma).
  *
  * INTI_PROFILE=development|preview|production
@@ -22,22 +23,23 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   return {
     ...config,
     name: profile === 'production' ? 'Inti Taxi' : `Inti Taxi (${profile})`,
-    slug: 'inti-taxi-pasajero',
+    slug: 'inti-taxi',
     scheme: 'intitaxi',
     version: '0.1.0',
     orientation: 'portrait',
     icon: './assets/icon.png',
-    userInterfaceStyle: 'light',
+    userInterfaceStyle: 'dark',
+    backgroundColor: '#0B0B0D',
     android: {
-      package: 'ec.intitaxi.passenger',
+      package: 'ec.intitaxi.app',
       versionCode: 1,
       adaptiveIcon: {
-        backgroundColor: '#F2A900',
+        backgroundColor: '#0B0B0D',
         foregroundImage: './assets/android-icon-foreground.png',
         backgroundImage: './assets/android-icon-background.png',
         monochromeImage: './assets/android-icon-monochrome.png',
       },
-      // Solo ubicación en primer plano: el pasajero no necesita ubicación en segundo plano.
+      // Solo ubicación en primer plano (también para socios: se comparte mientras la app está abierta y conectada).
       // Micrófono y cámara: solo para notas de voz, fotos y videos del chat (se piden al usarlos).
       permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION', 'RECORD_AUDIO', 'CAMERA'],
       blockedPermissions: [

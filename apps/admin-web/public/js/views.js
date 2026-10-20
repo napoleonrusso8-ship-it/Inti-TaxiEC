@@ -2,6 +2,10 @@
 // ocultar un menú NO es un control de seguridad).
 import { ask, button, card, fmt, form, h, json, run, table, toast } from './ui.js';
 
+/** Tipos de socio (app única). */
+const PARTNER_KIND = { taxi_driver: 'Conductor de taxi', route_taxi_owner: 'Dueño de taxi amarillo (Ruta)', van_owner: 'Dueño de furgoneta (Ruta)', rental_company: 'Empresa de alquiler', tow_operator: 'Operador de grúa' };
+const kindLabel = (k) => PARTNER_KIND[k] ?? k ?? '';
+
 const statusSelect = (options, value, onchange) => h('select', { onchange: (e) => onchange(e.target.value) }, options.map((o) => h('option', { value: o, selected: o === value }, o)));
 
 /** Vista con filtro de estado que se vuelve a pintar al cambiarlo. */
@@ -50,7 +54,7 @@ export const VIEWS = [
     render(s, root) {
       return filtered(root, ['under_review', 'applicant', 'approved', 'rejected', 'suspended'], 'under_review', async (status) => {
         const rows = await s.call('api', 'GET', `/v1/admin/drivers?status=${status}`);
-        return table(rows, [{ label: 'Conductor', value: (r) => fmt.short(r.driverId) }, { label: 'Licencia', key: 'licenseCategory' }, { label: 'Enviado', value: (r) => fmt.dt(r.submittedAt) }], (r) => button('Revisar', () => driverDetail(s, r.driverId)));
+        return table(rows, [{ label: 'Socio', value: (r) => fmt.short(r.driverId) }, { label: 'Tipo', value: (r) => kindLabel(r.partnerKind) }, { label: 'Empresa', value: (r) => r.businessName ?? '' }, { label: 'Licencia', value: (r) => r.licenseCategory ?? '—' }, { label: 'Enviado', value: (r) => fmt.dt(r.submittedAt) }], (r) => button('Revisar', () => driverDetail(s, r.driverId)));
       });
     },
   },
@@ -120,6 +124,7 @@ export const VIEWS = [
       root.append(
         h('p', { class: 'muted' }, 'Publicar requiere validar y la aprobación de otra persona. Una ruta activa se pausa para editarla.'),
         table(rows, [{ label: 'Código', key: 'code' }, { label: 'Nombre', key: 'name' }, { label: 'Estado', value: (r) => h('span', { class: `badge ${r.status}` }, r.status) }, { label: 'Conductores', key: 'enabledDrivers' }, { label: 'En servicio', key: 'vehiclesInService' }], (r) => button('Gestionar', () => routeDetail(s, r.id))),
+        await enablementRequests(s),
         card('Nueva ruta', form([{ name: 'code', label: 'Código (R2, R3…)', required: true, max: 4 }, { name: 'name', label: 'Nombre', required: true, max: 120 }, { name: 'corridor', label: 'Corredor (vías)', max: 300 }], 'Crear borrador', async (v) => {
           const r = await run(() => s.call('api', 'POST', '/v1/admin/routes', { code: v.code, name: v.name, corridor: v.corridor || undefined }), 'Ruta creada en borrador');
           if (r) routeDetail(s, r.id);
@@ -222,7 +227,9 @@ async function driverDetail(s, id) {
   if (!d) return;
   const docs = d.documents ?? [];
   drawer(
-    `Conductor ${fmt.short(id)}`,
+    `Socio ${fmt.short(id)}`,
+    h('p', {}, h('strong', {}, kindLabel(d.partnerKind)), d.company ? ` · ${d.company.businessName} · RUC ${d.company.rucMasked}` : '', d.license ? ` · Licencia ${d.license.number} (${d.license.category})` : ''),
+    h('p', { class: 'muted' }, `Documentos exigidos: ${(d.requiredDocs?.personal ?? []).join(', ')} + por vehículo ${(d.requiredDocs?.vehicle ?? []).join(', ')}`),
     d.issuesForApproval?.length ? h('p', { class: 'error' }, `Pendiente: ${d.issuesForApproval.join(', ')}`) : h('p', { class: 'ok' }, 'Sin pendientes para aprobar'),
     card('Documentos', table(docs, [{ label: 'Tipo', key: 'type' }, { label: 'Estado', key: 'status' }, { label: 'Vence', key: 'expiresOn' }], (doc) => [
       button('Ver (60 s)', async () => {
@@ -309,6 +316,23 @@ async function incidentDetail(s, id) {
     card(`Manifiesto (${m?.integrity ?? 'sin manifiesto'})`, m?.integrity === 'TAMPERED' ? h('p', { class: 'error' }, 'La cadena de versiones del manifiesto NO es íntegra.') : null, json(m?.payload ?? null)),
     card('Eventos', table(d.events, [{ label: 'Evento', key: 'event' }, { label: 'Fecha', value: (e) => fmt.dt(e.at ?? e.created_at) }, { label: 'Datos', value: (e) => JSON.stringify(e.data ?? {}) }])),
   );
+}
+
+/** Solicitudes de habilitación hechas desde la app por dueños de taxi amarillo y de furgoneta. */
+async function enablementRequests(s) {
+  const rows = await s.call('api', 'GET', '/v1/admin/routes/enablement-requests?status=pending');
+  const decide = async (r, approve) => {
+    const reason = approve ? undefined : ask('Motivo del rechazo (lo verá el socio):');
+    if (!approve && !reason) return;
+    if (await run(() => s.call('api', 'POST', `/v1/admin/routes/enablement-requests/${r.id}/decision`, { approve, reason }), approve ? 'Socio habilitado en la ruta' : 'Solicitud rechazada')) reload();
+  };
+  return card('Solicitudes de habilitación desde la app',
+    rows.length
+      ? table(rows, [{ label: 'Ruta', key: 'routeCode' }, { label: 'Socio', value: (r) => `${r.driverFirstName ?? ''} (${fmt.short(r.driverId)})` }, { label: 'Tipo', value: (r) => kindLabel(r.partnerKind) }, { label: 'Vehículo', value: (r) => `${r.plate} · ${r.vehicleType} · ${r.seats} asientos` }, { label: 'Pedida', value: (r) => fmt.dt(r.createdAt) }], (r) => [
+          button('Aprobar', () => decide(r, true)),
+          button('Rechazar', () => decide(r, false), 'danger'),
+        ])
+      : h('p', { class: 'muted' }, 'No hay solicitudes pendientes.'));
 }
 
 async function routeDetail(s, id) {

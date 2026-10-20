@@ -54,7 +54,7 @@ export class TripsController {
         paymentMethodId: z.string().uuid().optional(),
         // Preferencias del viaje (el conductor las ve antes de aceptar) y filtros de conductor.
         prefs: TripPrefs.default({}),
-        womenOnly: z.boolean().default(false),
+        ellxsOnly: z.boolean().default(false),
         allyOnly: z.boolean().default(false),
       }).passthrough(),
       body,

@@ -1,5 +1,5 @@
 import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
-import { ApiClient, ApiError, hardwareSigner, passengerApi, RealtimeClient, type HardwareKey, type RealtimeMessage, type SocketLike } from '@intitaxi/mobile-core';
+import { ApiClient, ApiError, hardwareSigner, partnerApi, passengerApi, RealtimeClient, type HardwareKey, type RealtimeMessage, type SocketLike } from '@intitaxi/mobile-core';
 import { validCedula } from '@intitaxi/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { offerFor, onlineDriver, waitFor } from '../src/flows.js';
@@ -140,5 +140,54 @@ describe('Cliente móvil: viaje completo con tiempo real', () => {
     await app.client.logout();
     const again = await phoneApp(app.store, app.keystore);
     expect(await again.client.restore()).toBe(false);
+  });
+});
+
+describe('App única: viajar y trabajar con la misma clave del teléfono', () => {
+  /** Igual que apps/mobile/src/lib/session.ts: dos clientes OAuth, mismo Keystore, refresh tokens en claves separadas. */
+  const prefixed = (base: ReturnType<typeof memoryStore>, prefix: string) => ({ get: (k: string) => base.get(prefix + k), set: (k: string, v: string) => base.set(prefix + k, v), delete: (k: string) => base.delete(prefix + k) });
+  async function unifiedApp(store = memoryStore(), keystore = softwareKeystore()) {
+    const services = { auth: s.urls.auth!, api: s.urls.api!, sos: s.urls.sos!, realtime: s.urls.realtime! };
+    const signer = await hardwareSigner(keystore);
+    const attest = async (nonce: string) => `dev-ok:${nonce}`;
+    const rider = new ApiClient({ services, appId: 'ec.intitaxi.app', clientId: 'intitaxi-passenger' }, signer, prefixed(store, ''), attest);
+    const partner = new ApiClient({ services, appId: 'ec.intitaxi.app', clientId: 'intitaxi-driver' }, signer, prefixed(store, 'partner.'), attest);
+    return { rider, partner, store, keystore };
+  }
+
+  it('pasa a modo Trabajar sin otro SMS, mantiene ambas sesiones y las restaura al reabrir la app', async () => {
+    const app = await unifiedApp();
+    const phone = s.newPhone();
+    const ch = await app.rider.requestOtp(phone.local);
+    await app.rider.verifyOtp(ch.challengeId, await s.lastCode(phone.e164));
+    const smsBefore = await s.pool.query('SELECT count(*)::int AS n FROM identity.otp_challenges');
+
+    await app.partner.linkFrom(app.rider);
+    expect(app.partner.loggedIn).toBe(true);
+    // Aún no es socio: el servidor responde 404 al perfil (la app muestra el menú de perfiles).
+    const err = await partnerApi(app.partner).profile().catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(404);
+    // Un endpoint de socio no acepta la sesión de pasajero, y viceversa la de pasajero sigue funcionando.
+    expect((await app.rider.call('api', 'GET', '/v1/driver/profile').catch((e) => e)).status).toBe(403);
+    expect((await passengerApi(app.rider).me()).phone).toMatch(/\*/);
+    const smsAfter = await s.pool.query('SELECT count(*)::int AS n FROM identity.otp_challenges');
+    expect(smsAfter.rows[0].n).toBe(smsBefore.rows[0].n); // no se pidió otro código
+
+    // Reabrir la app: ambas sesiones se restauran desde el almacenamiento seguro con la misma clave.
+    const reopened = await unifiedApp(app.store, app.keystore);
+    expect(await reopened.rider.restore()).toBe(true);
+    expect(await reopened.partner.restore()).toBe(true);
+    expect((await reopened.partner.call('api', 'GET', '/v1/driver/profile').catch((e) => e)).status).toBe(404);
+  });
+
+  it('otro teléfono (otra clave) no puede usar el token de pasajero para abrir el modo Trabajar', async () => {
+    const app = await unifiedApp();
+    const phone = s.newPhone();
+    const ch = await app.rider.requestOtp(phone.local);
+    await app.rider.verifyOtp(ch.challengeId, await s.lastCode(phone.e164));
+    const thief = await unifiedApp();
+    await expect(thief.partner.linkFrom(app.rider)).rejects.toBeTruthy();
+    expect(thief.partner.loggedIn).toBe(false);
   });
 });

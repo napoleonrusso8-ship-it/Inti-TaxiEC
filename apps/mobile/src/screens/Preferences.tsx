@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Switch } from 'react-native';
+import { Alert, Switch } from 'react-native';
 import type { TripPrefs } from '@intitaxi/mobile-core';
 import { useSession } from '../lib/session-context';
-import { Button, C, Card, Choice, ErrorText, Field, Loading, P, Row, Screen, useAction } from '../ui/kit';
+import { Button, C, Card, Choice, ErrorText, Field, Loading, P, PrideBar, Row, Screen, useAction } from '../ui/kit';
 
 type Prefs = Awaited<ReturnType<ReturnType<typeof useSession>['api']['preferences']>>;
 const PREFS: { key: keyof TripPrefs; label: string }[] = [
@@ -13,8 +13,8 @@ const PREFS: { key: keyof TripPrefs; label: string }[] = [
   { key: 'wheelchair', label: '♿ Necesito vehículo accesible' },
 ];
 
-/** Cómo quieres que te llamen, Modo Ella, alerta de desvío y preferencias por defecto. */
-export function Preferences({ hint }: { hint?: 'ella' }) {
+/** Cómo quieres que te llamen, Modo Ellxs, alerta de desvío y preferencias por defecto. */
+export function Preferences({ hint }: { hint?: 'ellxs' }) {
   const { api } = useSession();
   const [p, setP] = useState<Prefs | null>(null);
   const [name, setName] = useState('');
@@ -35,11 +35,26 @@ export function Preferences({ hint }: { hint?: 'ella' }) {
       setSaved(true);
     });
 
+  /**
+   * Modo Ellxs es un dato SENSIBLE (LOPDP art. 26): se activa solo con consentimiento explícito y separado,
+   * mostrando el texto legal vigente. Desactivarlo borra la autodeclaración.
+   */
+  const toggleEllxs = (on: boolean) => {
+    if (!on) return void save({ ellxsMember: false });
+    void run(async () => {
+      const t = await api.consentText('ellxs');
+      Alert.alert(t.title, t.body, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Acepto', onPress: () => void run(async () => (await api.grantConsent('ellxs'), await api.setPreferences({ ellxsMember: true }), setP({ ...p, ellxsMember: true }), setSaved(true))) },
+      ]);
+    });
+  };
+
   return (
     <Screen title="Preferencias">
-      {hint === 'ella' && !p.selfIdentifiesWoman ? (
+      {hint === 'ellxs' && !p.ellxsMember ? (
         <Card style={{ borderColor: C.brand }}>
-          <P>✦ Modo Ella te conecta solo con conductoras verificadas. Para usarlo, actívalo abajo.</P>
+          <P>🌈 Modo Ellxs te conecta solo con conductorxs Ellxs verificadxs. Para usarlo, actívalo abajo.</P>
         </Card>
       ) : null}
       <Card>
@@ -49,11 +64,14 @@ export function Preferences({ hint }: { hint?: 'ella' }) {
         <Button label="Guardar nombre" kind="secondary" loading={busy} onPress={() => save({ chosenName: name.trim() || null })} />
       </Card>
       <Card>
-        <P style={{ fontWeight: '700' }}>✦ Modo Ella</P>
-        <P muted>Para mujeres (incluidas mujeres trans). Lo declaras tú: no pedimos pruebas ni guardamos tu orientación o identidad. Solo sirve para habilitar viajes con conductoras.</P>
+        <PrideBar />
+        <P style={{ fontWeight: '700' }}>🌈 Modo Ellxs</P>
+        <P muted>
+          Para mujeres y personas de la comunidad LGBTI. Lo declaras tú: no pedimos pruebas ni preguntamos a qué grupo perteneces. Solo sirve para habilitar viajes con conductorxs Ellxs, nunca se muestra al conductor y puedes desactivarlo cuando quieras.
+        </P>
         <Row>
-          <Switch value={p.selfIdentifiesWoman} onValueChange={(v) => void save({ selfIdentifiesWoman: v })} thumbColor={p.selfIdentifiesWoman ? C.brand : undefined} />
-          <P>Me identifico como mujer</P>
+          <Switch value={p.ellxsMember} onValueChange={toggleEllxs} thumbColor={p.ellxsMember ? C.brand : undefined} />
+          <P style={{ flex: 1 }}>Soy mujer o parte de la comunidad LGBTI</P>
         </Row>
       </Card>
       <Card>

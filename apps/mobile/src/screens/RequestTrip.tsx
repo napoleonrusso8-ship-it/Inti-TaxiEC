@@ -19,7 +19,7 @@ const PREF_LABELS: { key: keyof TripPrefs; label: string }[] = [
 const SURGE_REASON: Record<string, string> = { high_demand: 'Alta demanda en tu zona', no_drivers_nearby: 'Pocos conductores cerca' };
 
 /** Pedir un taxi: origen, destino, quiénes viajan, preferencias, filtros, pago y precio cerrado con desglose. */
-export function RequestTrip({ womenOnly: initialWomenOnly = false }: { womenOnly?: boolean }) {
+export function RequestTrip({ ellxsOnly: initialEllxs = false }: { ellxsOnly?: boolean }) {
   const { api, risk } = useSession();
   const nav = useNav();
   const [origin, setOrigin] = useState<Point | null>(null);
@@ -30,8 +30,8 @@ export function RequestTrip({ womenOnly: initialWomenOnly = false }: { womenOnly
   const [third, setThird] = useState<PersonDraft>(emptyPerson());
   const [payment, setPayment] = useState<PaymentMethod>('cash');
   const [prefs, setPrefs] = useState<TripPrefs>({});
-  const [canWomenOnly, setCanWomenOnly] = useState(false);
-  const [womenOnly, setWomenOnly] = useState(initialWomenOnly);
+  const [canEllxs, setCanEllxs] = useState(false);
+  const [ellxsOnly, setEllxsOnly] = useState(initialEllxs);
   const [allyOnly, setAllyOnly] = useState(false);
   const [quote, setQuote] = useState<QuoteView | null>(null);
   const { busy, error, setError, run } = useAction();
@@ -42,7 +42,7 @@ export function RequestTrip({ womenOnly: initialWomenOnly = false }: { womenOnly
       setMockedGps(fix.mocked);
       setOrigin({ label: 'Mi ubicación', at: fix });
     });
-    void api.preferences().then((p) => (setPrefs(p.defaultPrefs ?? {}), setCanWomenOnly(p.selfIdentifiesWoman))).catch(() => {});
+    void api.preferences().then((p) => (setPrefs(p.defaultPrefs ?? {}), setCanEllxs(p.ellxsMember))).catch(() => {});
   }, []);
   useEffect(() => setQuote(null), [origin, dest]);
 
@@ -62,7 +62,7 @@ export function RequestTrip({ womenOnly: initialWomenOnly = false }: { womenOnly
       if (problem) return setError(`Pasajero: ${problem}`);
     }
     void run(async () => {
-      const t = await api.requestTrip({ quoteId: quote!.quoteId, paymentMethod: payment, companions: companions.map(toPerson), forThirdParty: forOther ? toPerson(third) : undefined, prefs, womenOnly, allyOnly });
+      const t = await api.requestTrip({ quoteId: quote!.quoteId, paymentMethod: payment, companions: companions.map(toPerson), forThirdParty: forOther ? toPerson(third) : undefined, prefs, ellxsOnly, allyOnly });
       nav.replace('trip', { tripId: t.id });
     });
   };
@@ -70,7 +70,7 @@ export function RequestTrip({ womenOnly: initialWomenOnly = false }: { womenOnly
   const placeOptions = PLACES.map((p) => ({ value: p.name, label: p.name }));
   const pick = (name: string) => PLACES.find((p) => p.name === name)!;
   return (
-    <Screen title={womenOnly ? 'Modo Ella' : 'Pedir taxi'}>
+    <Screen title={ellxsOnly ? 'Modo Ellxs' : 'Pedir taxi'} subtitle={ellxsOnly ? 'Solo conductorxs Ellxs verificadxs' : undefined}>
       {mockedGps ? <P style={{ color: C.danger }}>Tu teléfono usa una ubicación simulada. Desactívala para pedir un taxi con tu posición real.</P> : null}
       <TripMap markers={[...(origin ? [{ id: 'o', title: 'Origen', ...origin.at }] : []), ...(dest ? [{ id: 'd', title: 'Destino', ...dest.at, color: 'gold' }] : [])]} />
       <Card>
@@ -95,10 +95,10 @@ export function RequestTrip({ womenOnly: initialWomenOnly = false }: { womenOnly
         <P style={{ fontWeight: '700' }}>Preferencias del viaje</P>
         <Choice<string> value="" onChange={(k) => setPrefs({ ...prefs, [k]: !prefs[k as keyof TripPrefs] })} options={PREF_LABELS.map((p) => ({ value: p.key, label: `${p.label}${prefs[p.key] ? ' ✓' : ''}` }))} />
         <P muted>El conductor las ve antes de aceptar. Mascota y silla de ruedas solo se asignan a vehículos preparados.</P>
-        {canWomenOnly ? (
+        {canEllxs ? (
           <Row>
-            <Switch value={womenOnly} onValueChange={setWomenOnly} thumbColor={womenOnly ? C.brand : undefined} />
-            <P>✦ Modo Ella: solo conductoras</P>
+            <Switch value={ellxsOnly} onValueChange={setEllxsOnly} thumbColor={ellxsOnly ? C.brand : undefined} />
+            <P>🌈 Modo Ellxs: solo conductorxs Ellxs (mujeres y personas LGBTI)</P>
           </Row>
         ) : null}
         <Row>

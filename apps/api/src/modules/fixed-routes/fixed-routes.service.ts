@@ -92,6 +92,11 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     return { open: isOpen(h, at), serviceHours: h ? { ...h, lastBoarding: lastMinute(h.end) } : null };
   }
 
+  /** Horario público de una ruta (abierta ahora y hasta qué hora se sube). */
+  async serviceHoursView(routeId: string) {
+    return this.#hoursView(await this.serviceHours(routeId));
+  }
+
   async #assertOpen(routeId: string, c: Pool | PoolClient = this.pool, at = new Date()) {
     const h = await this.serviceHours(routeId, c);
     if (!isOpen(h, at)) throw new AppError(409, 'route_closed', `Taxi Ruta está cerrado. Funciona de ${h!.start} a ${lastMinute(h!.end)} (hora de Guayaquil); abre a las ${h!.start}`);

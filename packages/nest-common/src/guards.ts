@@ -50,6 +50,8 @@ export class DpopProofGuard implements CanActivate {
 }
 
 export const ATTESTATION_TICKET_TTL = 10 * 60;
+/** Cliente OAuth de la experiencia de socio (conductor, dueño de vehículo, grúa, alquiler). */
+const DRIVER_CLIENT = 'intitaxi-driver';
 export const attestationTicketKey = (ticket: string) => `att:ticket:${sha256Base64Url(ticket)}`;
 
 /**
@@ -70,7 +72,13 @@ export class AttestationGuard implements CanActivate {
     const device = raw ? (JSON.parse(raw) as AttestedDevice) : null;
     if (!device || device.jkt !== jkt) throw deny();
     if (req.auth?.deviceId && req.auth.deviceId !== device.deviceId) throw deny();
-    req.device = { ...device, flags: device.flags ?? [] };
+    const flags = device.flags ?? [];
+    // La app única tolera teléfonos con integridad básica (p. ej. rooteados) para viajar como pasajero,
+    // pero para trabajar como socio se exige integridad completa de Google Play.
+    if (req.auth?.clientId === DRIVER_CLIENT && flags.includes('device_integrity_basic_only')) {
+      throw new AppError(403, 'device_not_trusted', 'Para trabajar con Inti Taxi necesitas un teléfono sin modificaciones (integridad completa de Google Play).');
+    }
+    req.device = { ...device, flags };
     return true;
   }
 }
