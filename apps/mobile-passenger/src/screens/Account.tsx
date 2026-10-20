@@ -53,10 +53,22 @@ export function Account() {
           <P muted>PIN de seguridad y de emergencia, contactos de confianza</P>
         </Card>
       </Pressable>
-      <Pressable onPress={() => nav.push('history')}>
+      <Pressable onPress={() => nav.push('preferences')}>
         <Card>
-          <P style={{ fontWeight: '700' }}>Mis viajes</P>
-          <P muted>Historial, recibos y reclamos</P>
+          <P style={{ fontWeight: '700' }}>Preferencias</P>
+          <P muted>Cómo quieres que te llamen, Modo Ella, alerta de desvío, viaje silencioso</P>
+        </Card>
+      </Pressable>
+      <Pressable onPress={() => nav.push('points')}>
+        <Card>
+          <P style={{ fontWeight: '700' }}>✦ Inti Puntos</P>
+          <P muted>Gana puntos en cada viaje y canjéalos por crédito</P>
+        </Card>
+      </Pressable>
+      <Pressable onPress={() => nav.push('reports')}>
+        <Card>
+          <P style={{ fontWeight: '700' }}>Mis reportes</P>
+          <P muted>Estado de los reportes que enviaste</P>
         </Card>
       </Pressable>
       <Card>

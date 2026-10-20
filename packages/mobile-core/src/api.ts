@@ -21,6 +21,62 @@ export interface DriverCard {
   vehicle: { plate: string; make: string; model: string; color: string } | null;
   rating: number | null;
   ratingsCount: number;
+  tripsCount: number;
+  activeSince: number | null;
+  tags: { tag: string; label: string; count: number }[];
+  badges: { ally: boolean; womenRides: boolean };
+}
+
+export interface TripPrefs {
+  quiet?: boolean;
+  ac?: boolean;
+  luggage?: boolean;
+  pet?: boolean;
+  wheelchair?: boolean;
+}
+
+export interface QuoteView {
+  quoteId: string;
+  fareCents: number;
+  distanceM: number;
+  durationS: number;
+  expiresIn: number;
+  breakdown: { baseCents: number; surgeCents: number; multiplier: number; reason: 'normal' | 'high_demand' | 'no_drivers_nearby'; driverEarnsCents: number; priceLocked: boolean };
+}
+
+export interface ChatMessage {
+  type: 'chat';
+  from: 'passenger' | 'driver';
+  text?: string;
+  kind?: 'voice' | 'photo' | 'video';
+  mediaId?: string;
+  durationMs?: number | null;
+  at: string;
+}
+
+export interface UploadInstructions {
+  method: 'POST' | 'PUT';
+  url: string;
+  fields?: Record<string, string>;
+  headers?: Record<string, string>;
+}
+
+export interface AssistView {
+  id: string;
+  kind: 'tow' | 'rental';
+  status: 'open' | 'accepted' | 'arrived' | 'in_progress' | 'completed' | 'cancelled' | 'expired';
+  offerCents: number;
+  suggested: { minCents: number; maxCents: number };
+  pickup: LatLng & { label: string | null };
+  destination: (LatLng & { label: string | null }) | null;
+  vehicleCategory: string;
+  problem: string | null;
+  startDate: string | null;
+  days: number | null;
+  provider: DriverCard | null;
+  providerLocation: LatLng | null;
+  expiresAt: string | null;
+  rating: number | null;
 }
 
 export interface TripView {
@@ -35,6 +91,8 @@ export interface TripView {
   partySize: number;
   paymentMethod: string;
   driver: DriverCard | null;
+  prefs: TripPrefs;
+  reassignments: { used: number; max: number };
   driverLocation: (LatLng & { at: number }) | null;
 }
 
@@ -57,14 +115,44 @@ export function passengerApi(c: ApiClient) {
 
     // Viajes
     quote: (origin: LatLng, destination: LatLng, originLabel?: string, destinationLabel?: string) =>
-      c.call<{ quoteId: string; fareCents: number; distanceM: number; durationS: number; expiresIn: number }>('api', 'POST', '/v1/trips/quotes', { origin, destination, originLabel, destinationLabel }),
-    requestTrip: (input: { quoteId: string; paymentMethod: PaymentMethod; paymentMethodId?: string; companions?: Person[]; forThirdParty?: Person }) =>
+      c.call<QuoteView>('api', 'POST', '/v1/trips/quotes', { origin, destination, originLabel, destinationLabel }),
+    requestTrip: (input: { quoteId: string; paymentMethod: PaymentMethod; paymentMethodId?: string; companions?: Person[]; forThirdParty?: Person; prefs?: TripPrefs; womenOnly?: boolean; allyOnly?: boolean }) =>
       c.call<TripView>('api', 'POST', '/v1/trips', input, { idempotencyKey: idempotencyKey() }),
     trip: (id: string) => c.call<TripView>('api', 'GET', `/v1/trips/${id}`),
     history: () => c.call<{ id: string; status: string; fareCents: number; finalFareCents: number | null; requestedAt: string }[]>('api', 'GET', '/v1/trips'),
     pin: (id: string) => c.call<{ pin: string }>('api', 'GET', `/v1/trips/${id}/pin`),
     cancel: (id: string, reason?: string) => c.call('api', 'POST', `/v1/trips/${id}/cancel`, { reason }),
-    rate: (id: string, stars: number, comment?: string) => c.call('api', 'POST', `/v1/trips/${id}/rating`, { stars, comment }),
+    rate: (id: string, stars: number, tags: string[] = [], comment?: string) => c.call('api', 'POST', `/v1/trips/${id}/rating`, { stars, tags, comment }),
+    reassign: (id: string, reason?: string) => c.call<{ status: string; remainingReassignments: number }>('api', 'POST', `/v1/trips/${id}/reassign`, { reason }),
+    report: (id: string, category: string, description: string, evidenceMediaIds: string[] = []) => c.call<{ id: string; message: string }>('api', 'POST', `/v1/trips/${id}/reports`, { category, description, evidenceMediaIds }),
+    myReports: () => c.call<{ id: string; category: string; status: string; createdAt: string }[]>('api', 'GET', '/v1/reports'),
+    myFeedback: () => c.call<{ tag: string; label: string; count: number; positive: boolean }[]>('api', 'GET', '/v1/trips/me/feedback'),
+
+    // Chat (texto por tiempo real; archivos por la API)
+    chatHistory: (id: string) => c.call<ChatMessage[]>('api', 'GET', `/v1/trips/${id}/chat`),
+    chatUploadUrl: (id: string, kind: 'voice' | 'photo' | 'video', contentType: string, size: number) =>
+      c.call<{ mediaId: string; upload: UploadInstructions }>('api', 'POST', `/v1/trips/${id}/chat/media`, { kind, contentType, size }),
+    chatComplete: (id: string, mediaId: string) => c.call<ChatMessage>('api', 'POST', `/v1/trips/${id}/chat/media/${mediaId}/complete`),
+    chatMediaUrl: (id: string, mediaId: string) => c.call<{ url: string; contentType: string; kind: string; durationMs: number | null }>('api', 'GET', `/v1/trips/${id}/chat/media/${mediaId}`),
+
+    // Seguridad del viaje en curso
+    pendingSafetyCheck: (id: string) => c.call<{ id: string; kind: 'deviation' | 'long_stop'; respondBy: string } | null>('api', 'GET', `/v1/trips/${id}/safety-checks/pending`),
+    answerSafetyCheck: (id: string, checkId: string, ok: boolean) => c.call('api', 'POST', `/v1/trips/${id}/safety-checks/${checkId}`, { ok }),
+
+    // Perfil, inclusión y puntos
+    preferences: () => c.call<{ chosenName: string | null; selfIdentifiesWoman: boolean; deviationAlerts: 'night' | 'always' | 'off'; defaultPrefs: TripPrefs }>('api', 'GET', '/v1/me/preferences'),
+    setPreferences: (p: { chosenName?: string | null; selfIdentifiesWoman?: boolean; deviationAlerts?: 'night' | 'always' | 'off'; defaultPrefs?: TripPrefs }) => c.call('api', 'PUT', '/v1/me/preferences', p),
+    loyalty: () => c.call<{ points: number; valueCents: number; rules: { redeemUnit: number; redeemMin: number; monthlyMax: number }; history: { points: number; kind: string; at: string }[] }>('api', 'GET', '/v1/loyalty'),
+    redeem: (points: number) => c.call<{ creditedCents: number; balance: number }>('api', 'POST', '/v1/loyalty/redeem', { points }),
+
+    // Grúas y alquiler (el usuario oferta; el primer proveedor que acepta gana)
+    assistSuggest: (input: { kind: 'tow'; pickup: LatLng; destination: LatLng; vehicleCategory: string } | { kind: 'rental'; vehicleCategory: string; days: number }) =>
+      c.call<{ minCents: number; maxCents: number; distanceM?: number }>('api', 'POST', '/v1/assist/suggest', input),
+    assistRequest: (input: Record<string, unknown>) => c.call<AssistView>('api', 'POST', '/v1/assist/requests', input),
+    assist: (id: string) => c.call<AssistView>('api', 'GET', `/v1/assist/requests/${id}`),
+    assistRaise: (id: string, offerCents: number) => c.call<AssistView>('api', 'POST', `/v1/assist/requests/${id}/raise`, { offerCents }),
+    assistCancel: (id: string) => c.call('api', 'POST', `/v1/assist/requests/${id}/cancel`, {}),
+    assistRate: (id: string, stars: number) => c.call('api', 'POST', `/v1/assist/requests/${id}/rating`, { stars }),
     receipt: (id: string) => c.call<Record<string, any>>('api', 'GET', `/v1/trips/${id}/receipt`),
     shareLink: (id: string) => c.call<{ url: string; expiresIn: number; note: string }>('api', 'POST', `/v1/trips/${id}/share-links`),
     contactDriver: (id: string) => c.call<Record<string, any>>('api', 'POST', `/v1/trips/${id}/contact-session`),
@@ -83,13 +171,15 @@ export function passengerApi(c: ApiClient) {
     paymentMethods: () => c.call<{ id: string; brand: string; last4: string; status: string }[]>('api', 'GET', '/v1/payment-methods'),
 
     // Taxi Ruta
-    routes: () => c.call<{ id: string; code: string; name: string; currentFare: { name: string; amountCents: number } | null }[]>('api', 'GET', '/v1/routes'),
+    routes: () =>
+      c.call<{ id: string; code: string; name: string; currentFare: { name: string; amountCents: number } | null; currentFares: { taxi: { name: string; amountCents: number } | null; van: { name: string; amountCents: number } | null } }[]>('api', 'GET', '/v1/routes'),
     route: (id: string) => c.call<RouteDetail>('api', 'GET', `/v1/routes/${id}`),
     routeVehicles: (id: string, direction: string, stopId?: string) =>
-      c.call<{ instanceId: string; seatsAvailable: number; vehicle: { plate: string; color: string; make: string; model: string }; location: LatLng | null; etaSeconds: number | null }[]>(
+      c.call<{ instanceId: string; vehicleType: 'taxi' | 'van'; vehicleLabel: string; seatsAvailable: number; vehicle: { plate: string; color: string; make: string; model: string }; location: LatLng | null; etaSeconds: number | null; currentUnitFareCents: number | null; currentFareName: string | null }[]>(
         'api', 'GET', `/v1/routes/${id}/vehicles?direction=${direction}${stopId ? `&stopId=${stopId}` : ''}`,
       ),
-    routeQuote: (id: string, input: { direction: string; boardingStopId: string; alightingStopId: string; seats: number }) =>
+    switchVehicle: (bookingId: string, instanceId: string) => c.call<BookingView & { remainingSwitches: number }>('api', 'POST', `/v1/routes/bookings/${bookingId}/switch`, { instanceId }),
+    routeQuote: (id: string, input: { direction: string; boardingStopId: string; alightingStopId: string; seats: number; vehicleType?: 'taxi' | 'van' }) =>
       c.call<{ unitFareCents: number; totalCents: number; fareName: string; note: string; localTime: string }>('api', 'POST', `/v1/routes/${id}/quotes`, input),
     book: (id: string, input: { instanceId: string; direction: string; boardingStopId: string; alightingStopId: string; seats: number; paymentMethod: PaymentMethod; companions?: Person[] }) =>
       c.call<{ bookingId: string; tripId: string } & BookingView>('api', 'POST', `/v1/routes/${id}/bookings`, input),
@@ -113,13 +203,18 @@ export interface RouteDetail {
   name: string;
   corridor: string | null;
   currentFare: { name: string; amountCents: number } | null;
-  fares: { name: string; from: string; to: string; amountCents: number }[];
+  fares: { vehicleType: 'taxi' | 'van'; name: string; from: string; to: string; amountCents: number }[];
   fareNote: string;
   directions: { direction: 'outbound' | 'inbound'; label: string; stops: RouteStop[]; path: LatLng[] }[];
 }
 
 export interface BookingView {
   status: 'reserved' | 'boarded' | 'completed' | 'cancelled' | 'expired';
+  vehicleType: 'taxi' | 'van';
+  vehicleLabel: string;
+  driver: DriverCard;
+  switches: { used: number; max: number };
+  route: { id: string; direction: 'outbound' | 'inbound'; boardingStopId: string; instanceId: string };
   seats: number;
   boardingStop: string;
   alightingStop: string;

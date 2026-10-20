@@ -5,11 +5,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavProvider, useNav } from './lib/nav';
 import { startSession, type AppSession } from './lib/session';
 import { SessionContext } from './lib/session-context';
+import { AssistStatus, Rental, Tow } from './screens/Assist';
 import { Booking } from './screens/Booking';
+import { Chat } from './screens/Chat';
 import { History } from './screens/History';
 import { Home } from './screens/Home';
 import { Login } from './screens/Login';
+import { Points } from './screens/Points';
+import { Preferences } from './screens/Preferences';
+import { MyReports, Report } from './screens/Report';
+import { RequestTrip } from './screens/RequestTrip';
 import { RouteDetail } from './screens/RouteDetail';
+import { Routes } from './screens/Routes';
 import { Safety } from './screens/Safety';
 import { Sos } from './screens/Sos';
 import { Trip } from './screens/Trip';
@@ -37,8 +44,28 @@ function Router() {
       return <Trip tripId={p.tripId} />;
     case 'sos':
       return <Sos incidentId={p.incidentId} />;
+    case 'request':
+      return <RequestTrip womenOnly={p.womenOnly} />;
+    case 'chat':
+      return <Chat tripId={p.tripId} start={p.start} />;
+    case 'report':
+      return <Report tripId={p.tripId} />;
+    case 'reports':
+      return <MyReports />;
+    case 'routes':
+      return <Routes vehicleType={p.vehicleType} />;
     case 'route':
-      return <RouteDetail routeId={p.routeId} />;
+      return <RouteDetail routeId={p.routeId} vehicleType={p.vehicleType} />;
+    case 'tow':
+      return <Tow />;
+    case 'rental':
+      return <Rental />;
+    case 'assist':
+      return <AssistStatus id={p.id} />;
+    case 'preferences':
+      return <Preferences hint={p.hint} />;
+    case 'points':
+      return <Points />;
     case 'booking':
       return <Booking bookingId={p.bookingId} tripId={p.tripId} />;
     case 'verify':
@@ -65,7 +92,7 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       {session ? (
         <SessionContext.Provider value={session}>
           <NavProvider initial={{ name: session.client.loggedIn ? 'home' : 'login' }}>

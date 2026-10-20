@@ -6,7 +6,7 @@ export type RealtimeMessage =
   | { type: 'status'; status: string; at: string }
   | { type: 'driver'; driver: Record<string, unknown> }
   | { type: 'location'; lat: number; lng: number; heading?: number; at: string }
-  | { type: 'chat'; from: string; text: string; at: string }
+  | { type: 'chat'; from: 'passenger' | 'driver'; text?: string; kind?: 'voice' | 'photo' | 'video'; mediaId?: string; durationMs?: number | null; at: string }
   | { type: 'error'; code: string; channel?: string }
   | { type: 'pong' };
 

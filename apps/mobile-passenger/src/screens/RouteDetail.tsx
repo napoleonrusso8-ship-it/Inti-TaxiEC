@@ -9,7 +9,7 @@ import { Button, C, Card, Choice, ErrorText, H, Loading, P, Screen, useAction } 
 
 type Vehicle = Awaited<ReturnType<ReturnType<typeof useSession>['api']['routeVehicles']>>[number];
 
-export function RouteDetail({ routeId }: { routeId: string }) {
+export function RouteDetail({ routeId, vehicleType }: { routeId: string; vehicleType?: 'taxi' | 'van' }) {
   const { api, risk } = useSession();
   const nav = useNav();
   const [route, setRoute] = useState<Route | null>(null);
@@ -20,6 +20,7 @@ export function RouteDetail({ routeId }: { routeId: string }) {
   const [payment, setPayment] = useState<PaymentMethod>('cash');
   const [vehicles, setVehicles] = useState<Vehicle[] | null>(null);
   const [quote, setQuote] = useState<{ unitFareCents: number; totalCents: number; fareName: string; note: string } | null>(null);
+  const [kind, setKind] = useState<'all' | 'taxi' | 'van'>(vehicleType ?? 'all');
   const { busy, error, setError, run } = useAction();
   const seats = 1 + companions.length;
 
@@ -35,8 +36,8 @@ export function RouteDetail({ routeId }: { routeId: string }) {
   }, [from?.id, direction]);
   useEffect(() => {
     setQuote(null);
-    if (from && to) void api.routeQuote(routeId, { direction, boardingStopId: from.id, alightingStopId: to.id, seats }).then(setQuote).catch((e) => setError(String(e.message)));
-  }, [from?.id, to?.id, seats]);
+    if (from && to) void api.routeQuote(routeId, { direction, boardingStopId: from.id, alightingStopId: to.id, seats, vehicleType: kind === 'all' ? undefined : kind }).then(setQuote).catch((e) => setError(String(e.message)));
+  }, [from?.id, to?.id, seats, kind]);
 
   if (!route) return <Screen title="Taxi Ruta">{error ? <ErrorText error={error} /> : <Loading />}</Screen>;
   const dir = route.directions.find((d) => d.direction === direction)!;
@@ -63,10 +64,10 @@ export function RouteDetail({ routeId }: { routeId: string }) {
       <Pressable key={s.id} onPress={onPress} style={{ flexDirection: 'row', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderColor: C.line }}>
         <P style={{ width: 22, color: C.muted }}>{s.seq + 1}</P>
         <View style={{ flex: 1 }}>
-          <P style={role ? { fontWeight: '700', color: C.accent } : undefined}>{s.name}</P>
+          <P style={role ? { fontWeight: '700', color: C.brand } : undefined}>{s.name}</P>
           {s.reference ? <P muted>{s.reference}</P> : null}
         </View>
-        {role ? <P style={{ color: C.accent, fontWeight: '700' }}>{role}</P> : null}
+        {role ? <P style={{ color: C.brand, fontWeight: '700' }}>{role}</P> : null}
       </Pressable>
     );
   };
@@ -81,9 +82,9 @@ export function RouteDetail({ routeId }: { routeId: string }) {
       </Card>
       <Card>
         <P style={{ fontWeight: '700' }}>Tarifas por persona</P>
-        {route.fares.map((f) => (
-          <P key={f.name}>
-            {f.name} ({f.from}–{f.to}): {money(f.amountCents)}
+        {route.fares.filter((f) => kind === 'all' || f.vehicleType === kind).map((f) => (
+          <P key={`${f.vehicleType}-${f.name}`}>
+            {f.vehicleType === 'van' ? '🚐' : '🚕'} {f.name} ({f.from}–{f.to}): {money(f.amountCents)}
           </P>
         ))}
         <P muted>{route.fareNote}</P>
@@ -92,18 +93,20 @@ export function RouteDetail({ routeId }: { routeId: string }) {
         <>
           <Card>
             <P style={{ fontWeight: '700' }}>Asientos: {seats}</P>
-            <CompanionsEditor people={companions} onChange={setCompanions} max={3} />
+            <CompanionsEditor people={companions} onChange={setCompanions} max={kind === 'taxi' ? 3 : 14} />
             <Choice<PaymentMethod> value={payment} onChange={setPayment} options={[{ value: 'cash', label: 'Efectivo' }, ...(risk.length ? [] : [{ value: 'card' as const, label: 'Tarjeta' }, { value: 'wallet' as const, label: 'Billetera' }])]} />
             {quote ? <P>Estimado: {money(quote.unitFareCents)} × {seats} = {money(quote.totalCents)} ({quote.fareName})</P> : null}
             {quote ? <P muted>{quote.note}</P> : null}
           </Card>
           <H>Vehículos en la ruta</H>
+          <Choice<'all' | 'taxi' | 'van'> value={kind} onChange={setKind} options={[{ value: 'all', label: 'Todos' }, { value: 'taxi', label: '🚕 Taxi' }, { value: 'van', label: '🚐 Furgoneta' }]} />
           {vehicles === null ? <Loading /> : vehicles.length === 0 ? <P>No hay vehículos en camino a tu parada ahora.</P> : null}
-          {vehicles?.map((v) => (
+          {vehicles?.filter((v) => kind === 'all' || v.vehicleType === kind).map((v) => (
             <Card key={v.instanceId}>
               <P style={{ fontWeight: '700' }}>
-                {v.vehicle.make} {v.vehicle.model} {v.vehicle.color} · {v.vehicle.plate}
+                {v.vehicleType === 'van' ? '🚐' : '🚕'} {v.vehicleLabel} · {v.vehicle.make} {v.vehicle.model} {v.vehicle.color} · {v.vehicle.plate}
               </P>
+              {v.currentUnitFareCents !== null ? <P muted>{money(v.currentUnitFareCents)} por persona ({v.currentFareName}) · {money(v.currentUnitFareCents * seats)} en total</P> : null}
               <P>
                 {v.seatsAvailable} asiento(s) libre(s) · {v.etaSeconds !== null ? `llega en ~${Math.max(1, Math.round(v.etaSeconds / 60))} min` : 'ETA no disponible'}
               </P>

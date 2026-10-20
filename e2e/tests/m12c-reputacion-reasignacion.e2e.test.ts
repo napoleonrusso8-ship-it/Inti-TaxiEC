@@ -116,6 +116,8 @@ describe('Taxi Ruta: cambiar de unidad', () => {
     expect(b.body.driver).toMatchObject({ identityVerified: true, tripsCount: 0 });
     const sw = await p.d.call('api', 'POST', `/v1/routes/bookings/${b.body.bookingId}/switch`, { instanceId: u2.instanceId });
     expect(sw.body).toMatchObject({ remainingSwitches: 4, vehicle: { plate: u2.plate }, switches: { used: 1, max: 5 } });
+    // La reserva expone la ruta y la unidad actual para que la app ofrezca las otras unidades del mismo sentido.
+    expect(sw.body.route).toMatchObject({ id, direction: 'outbound', instanceId: u2.instanceId, boardingStopId: stops[1].id });
     expect((await u1.d.call('api', 'GET', '/v1/driver/route-instances/current')).body.seatsTaken).toBe(0);
     expect((await u2.d.call('api', 'GET', '/v1/driver/route-instances/current')).body.seatsTaken).toBe(1);
     await s.pool.query('UPDATE fixed_routes.bookings SET switch_count = 5 WHERE id = $1', [b.body.bookingId]);

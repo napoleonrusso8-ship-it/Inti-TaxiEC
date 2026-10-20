@@ -3,6 +3,16 @@ import type { LatLng } from '@intitaxi/mobile-core';
 import { config } from '../lib/config';
 import { C, P } from '../ui/kit';
 
+/** Estilo de mapa oscuro (acorde a la paleta negro/dorado). */
+const DARK_MAP = [
+  { elementType: 'geometry', stylers: [{ color: '#15161a' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8a877f' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0b0b0d' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a2c33' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1a24' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+];
+
 export interface Marker extends LatLng {
   id: string;
   title: string;
@@ -16,7 +26,7 @@ export interface Marker extends LatLng {
 export function TripMap({ markers, path, height = 220 }: { markers: Marker[]; path?: LatLng[]; height?: number }) {
   if (!config.mapsEnabled) {
     return (
-      <View style={{ height: 90, borderRadius: 12, backgroundColor: '#E8EEF4', padding: 12, justifyContent: 'center' }}>
+      <View style={{ height: 90, borderRadius: 16, backgroundColor: C.card2, borderWidth: 1, borderColor: C.line, padding: 12, justifyContent: 'center' }}>
         <P muted>Mapa no configurado en esta build.</P>
         {markers.map((m) => (
           <P key={m.id} muted>
@@ -35,6 +45,7 @@ export function TripMap({ markers, path, height = 220 }: { markers: Marker[]; pa
       style={{ height, borderRadius: 12 }}
       provider={Maps.PROVIDER_GOOGLE}
       initialRegion={{ latitude: first.lat, longitude: first.lng, latitudeDelta: 0.06, longitudeDelta: 0.06 }}
+      customMapStyle={DARK_MAP}
       toolbarEnabled={false}
     >
       {path && path.length > 1 ? <Maps.Polyline coordinates={path.map((p) => ({ latitude: p.lat, longitude: p.lng }))} strokeColor={C.accent} strokeWidth={4} /> : null}

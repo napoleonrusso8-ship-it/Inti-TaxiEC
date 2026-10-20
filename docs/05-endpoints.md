@@ -160,6 +160,27 @@
 | GET/POST/DELETE | `/v1/admin/users/{id}/roles` | Asignación de roles (con expiración) | `super_admin` |
 | GET | `/v1/admin/metrics` | Métricas agregadas (sin PII) | Cualquier rol admin |
 
+## 10b. Módulo 12: furgonetas, reputación, chat, reportes, grúas/alquiler, inclusión y puntos
+| Método | Ruta | Descripción | Quién |
+|---|---|---|---|
+| POST | `/v1/trips/quotes` | Ahora devuelve `breakdown` (base, extra dinámico ≤ 1,5×, motivo; el extra es 100 % del conductor) | Pasajero |
+| POST | `/v1/trips/{id}/reassign` | Pedir otra unidad (máx. 5; la sexta cierra el viaje) | Solicitante |
+| POST | `/v1/trips/{id}/rating` | Estrellas + etiquetas (`amable`, `puntual`…) | Pasajero o conductor |
+| GET | `/v1/trips/me/feedback` | Etiquetas recibidas | Usuario |
+| GET · POST · POST · GET | `/v1/trips/{id}/chat` · `/chat/media` · `/chat/media/{mid}/complete` · `/chat/media/{mid}` | Historial; subir voz (≤ 60 s), foto o video (≤ 20 s); el servidor inspecciona; URL de descarga de 60 s | Pasajero y conductor del viaje (desde la asignación hasta el destino) |
+| POST · GET | `/v1/trips/{id}/reports` · `/v1/reports` | Reportar malos tratos con pruebas del chat · mis reportes | Pasajero o conductor del viaje |
+| GET · POST | `/v1/trips/{id}/safety-checks/pending` · `/{checkId}` | Alerta de desvío: "¿estás bien?" (sí / ayuda) | Solicitante |
+| GET · PUT | `/v1/me/preferences` | Nombre elegido, Modo Ella, alerta de desvío, preferencias por defecto | Pasajero |
+| GET · POST | `/v1/loyalty` · `/v1/loyalty/redeem` | Inti Puntos | Usuario |
+| POST | `/v1/routes/bookings/{id}/switch` | Cambiar de unidad en Taxi Ruta (máx. 5) | Solicitante |
+| POST · POST · GET · POST · POST · POST | `/v1/assist/suggest` · `/requests` · `/requests/{id}` · `/raise` · `/cancel` · `/rating` | Grúa / alquiler: precio sugerido, oferta del usuario, subir oferta, cancelar, calificar | Usuario (alquiler exige KYC) |
+| GET · POST · POST | `/v1/provider/assist/requests?kind=` · `/{id}/accept` · `/{id}/{arrived\|in_progress\|completed}` | Proveedor: ver ofertas cercanas, aceptar (el primero gana), avanzar | Conductor con vehículo `tow`/`rental` aprobado |
+| POST · GET · POST · PUT | `/v1/driver/women-rides/request` · `/ally/course` · `/ally/certify` · `/vehicles/{id}/features` | Conductora (Modo Ella), curso Conductor Aliado, mascota/silla de ruedas | Conductor |
+| GET · POST | `/v1/admin/drivers/women-rides/pending` · `/{id}/women-rides` | Aprobar conductoras para Modo Ella | `driver_reviewer` |
+| GET · GET · POST | `/v1/admin/reports?status` · `/{id}` · `/{id}/assign` · `/{id}/actions` · `/{id}/decision` | Investigar reportes (contacto obligatorio con el reportado antes de decidir) | `trust_safety` |
+| POST | `/v1/admin/sanctions/{id}/approve` · `/revoke` | Expulsión con cuatro ojos; revocar sanción | `trust_safety` (otra persona) |
+| GET · PUT | `/v1/admin/commissions` | 9 % a demanda, $0,90 / $2,50 por recorrido de Taxi Ruta, 9 % grúa/alquiler | `super_admin` 🔐 |
+
 ## 11. Operación
 | Método | Ruta | Descripción |
 |---|---|---|

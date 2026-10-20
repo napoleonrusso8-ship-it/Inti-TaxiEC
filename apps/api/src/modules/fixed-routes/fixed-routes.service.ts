@@ -254,9 +254,9 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
 
   async bookingView(userId: string, bookingId: string) {
     const { rows } = await this.pool.query(
-      `SELECT b.*, sb.name AS boarding, sa.name AS alighting, v.plate, v.color, v.make, v.model, i.vehicle_type, i.driver_id, i.vehicle_id
+      `SELECT b.*, sb.name AS boarding, sa.name AS alighting, v.plate, v.color, v.make, v.model, i.vehicle_type, i.driver_id, i.vehicle_id, d.route_id, d.direction
        FROM fixed_routes.bookings b JOIN fixed_routes.stops sb ON sb.id = b.boarding_stop_id JOIN fixed_routes.stops sa ON sa.id = b.alighting_stop_id
-       JOIN fixed_routes.instances i ON i.id = b.instance_id JOIN drivers.vehicles v ON v.id = i.vehicle_id
+       JOIN fixed_routes.instances i ON i.id = b.instance_id JOIN drivers.vehicles v ON v.id = i.vehicle_id JOIN fixed_routes.directions d ON d.id = i.direction_id
        WHERE b.id = $1 AND b.requester_user_id = $2`,
       [bookingId, userId],
     );
@@ -270,6 +270,8 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
         : { final: false, estimatedUnitCents: b.estimated_unit_fare_cents, estimatedTotalCents: b.estimated_unit_fare_cents * b.seats },
       expiresAt: b.status === 'reserved' ? b.expires_at : null,
       switches: { used: b.switch_count, max: MAX_SWITCH },
+      // Para que la app ofrezca otras unidades del mismo sentido al cambiar de vehículo.
+      route: { id: b.route_id, direction: b.direction, boardingStopId: b.boarding_stop_id, instanceId: b.instance_id },
       driver: await this.trips.driverCard(b.driver_id, b.vehicle_id),
     };
   }

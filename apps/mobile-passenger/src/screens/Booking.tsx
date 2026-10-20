@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Text } from 'react-native';
+import { Alert, Text } from 'react-native';
 import { money, type BookingView } from '@intitaxi/mobile-core';
 import { Security } from '@intitaxi/mobile-security';
+import { DriverProfile } from '../components/DriverProfile';
+import { useNav } from '../lib/nav';
 import { useSession } from '../lib/session-context';
 import { Button, C, Card, ErrorText, H, Loading, P, Screen, useAction } from '../ui/kit';
+
+type Vehicle = Awaited<ReturnType<ReturnType<typeof useSession>['api']['routeVehicles']>>[number];
 import { SosButton } from './Trip';
 
 const LABEL: Record<BookingView['status'], string> = {
@@ -19,6 +23,8 @@ export function Booking({ bookingId, tripId }: { bookingId: string; tripId: stri
   const [b, setB] = useState<BookingView | null>(null);
   const [pin, setPin] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Record<string, any> | null>(null);
+  const [others, setOthers] = useState<Vehicle[] | null>(null);
+  const nav = useNav();
   const { busy, error, run } = useAction();
   const load = useCallback(() => api.booking(bookingId).then(setB), [bookingId]);
 
@@ -40,16 +46,30 @@ export function Booking({ bookingId, tripId }: { bookingId: string; tripId: stri
     if (b?.status === 'completed') void api.receipt(tripId).then(setReceipt).catch(() => {});
   }, [b?.status]);
 
+  const findOthers = () =>
+    run(async () => {
+      const list = await api.routeVehicles(b!.route.id, b!.route.direction, b!.route.boardingStopId);
+      setOthers(list.filter((v) => v.instanceId !== b!.route.instanceId && v.seatsAvailable >= b!.seats));
+    });
+  const switchTo = (v: Vehicle) => {
+    const last = b!.switches.used + 1 >= b!.switches.max;
+    Alert.alert(`¿Cambiar a ${v.vehicle.plate}?`, last ? 'Es tu último cambio permitido en esta reserva.' : `Te quedan ${b!.switches.max - b!.switches.used} cambios.`, [
+      { text: 'No' },
+      { text: 'Sí, cambiar', onPress: () => void run(async () => (setB(await api.switchVehicle(bookingId, v.instanceId)), setOthers(null))) },
+    ]);
+  };
+
   if (!b) return <Screen title="Mi reserva">{error ? <ErrorText error={error} /> : <Loading />}</Screen>;
   return (
     <Screen title="Mi reserva">
       <H>{LABEL[b.status]}</H>
+      {b.driver ? <DriverProfile driver={b.driver} title={b.vehicleType === 'van' ? '🚐 Tu furgoneta' : '🚕 Tu taxi ruta'} /> : null}
       <Card>
         <P>
           {b.boardingStop} → {b.alightingStop} · {b.seats} asiento(s)
         </P>
         <P>
-          {b.vehicle.make} {b.vehicle.model} {b.vehicle.color} · placa <Text style={{ fontWeight: '700' }}>{b.vehicle.plate}</Text>
+          {b.vehicleLabel} · {b.vehicle.make} {b.vehicle.model} {b.vehicle.color} · placa <Text style={{ fontWeight: '700' }}>{b.vehicle.plate}</Text>
         </P>
         {b.fare.final ? (
           <P>
@@ -66,6 +86,18 @@ export function Booking({ bookingId, tripId }: { bookingId: string; tripId: stri
         </Card>
       ) : null}
       {b.status === 'boarded' ? <SosButton tripId={tripId} /> : null}
+      {b.status === 'reserved' && b.switches.used < b.switches.max ? (
+        <Card>
+          <P style={{ fontWeight: '700' }}>¿Prefieres otra unidad? ({b.switches.used} de {b.switches.max} cambios)</P>
+          {others === null ? <Button label="Ver otras unidades" kind="secondary" loading={busy} onPress={() => void findOthers()} /> : null}
+          {others?.length === 0 ? <P muted>No hay otras unidades con asientos para ti ahora.</P> : null}
+          {others?.map((v) => (
+            <Button key={v.instanceId} kind="secondary" label={`${v.vehicleType === 'van' ? '🚐' : '🚕'} ${v.vehicle.plate} · ${v.seatsAvailable} libres${v.etaSeconds !== null ? ` · ~${Math.max(1, Math.round(v.etaSeconds / 60))} min` : ''}`} onPress={() => switchTo(v)} />
+          ))}
+        </Card>
+      ) : null}
+      {b.status === 'boarded' || b.status === 'reserved' ? <Button label="💬 Chat con el conductor" kind="secondary" onPress={() => nav.push('chat', { tripId })} /> : null}
+      {b.status === 'completed' || b.status === 'boarded' ? <Button label="Reportar un problema con el conductor" kind="secondary" onPress={() => nav.push('report', { tripId })} /> : null}
       {b.status === 'reserved' ? <Button label="Cancelar reserva" kind="secondary" loading={busy} onPress={() => run(async () => (await api.cancelBooking(bookingId), await load()))} /> : null}
       {receipt?.route ? (
         <Card>

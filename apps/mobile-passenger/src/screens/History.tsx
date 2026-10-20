@@ -6,13 +6,21 @@ import { useSession } from '../lib/session-context';
 import { Card, ErrorText, Loading, P, Screen, useAction } from '../ui/kit';
 
 export function History() {
+  return (
+    <Screen title="Mis viajes">
+      <HistoryList />
+    </Screen>
+  );
+}
+
+export function HistoryList() {
   const { api } = useSession();
   const nav = useNav();
   const [rows, setRows] = useState<Awaited<ReturnType<typeof api.history>> | null>(null);
   const { error, run } = useAction();
   useEffect(() => void run(async () => setRows(await api.history())), []);
   return (
-    <Screen title="Mis viajes">
+    <>
       {!rows ? <Loading /> : rows.length === 0 ? <P>Aún no tienes viajes.</P> : null}
       {rows?.map((t) => (
         <Pressable key={t.id} onPress={() => nav.push('trip', { tripId: t.id })}>
@@ -25,6 +33,6 @@ export function History() {
         </Pressable>
       ))}
       <ErrorText error={error} />
-    </Screen>
+    </>
   );
 }

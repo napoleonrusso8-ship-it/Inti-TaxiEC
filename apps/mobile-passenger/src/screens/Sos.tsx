@@ -39,7 +39,7 @@ export function Sos({ incidentId }: { incidentId: string }) {
   }
   return (
     <Screen title="Alerta SOS">
-      <Card style={{ backgroundColor: '#FDE8E7', borderColor: C.danger }}>
+      <Card style={{ backgroundColor: 'rgba(229,72,77,0.12)', borderColor: C.danger }}>
         <H>Alerta enviada</H>
         <P>El centro de monitoreo de Inti Taxi ya tiene tu ubicación y los datos del vehículo. Si no responden a tiempo, el caso se escala al ECU 911 con el registro de quienes viajan.</P>
         <P>Tus contactos de confianza recibieron un SMS con el enlace de seguimiento.</P>

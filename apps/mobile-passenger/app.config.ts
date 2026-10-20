@@ -38,10 +38,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         monochromeImage: './assets/android-icon-monochrome.png',
       },
       // Solo ubicación en primer plano: el pasajero no necesita ubicación en segundo plano.
-      permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION'],
+      // Micrófono y cámara: solo para notas de voz, fotos y videos del chat (se piden al usarlos).
+      permissions: ['ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION', 'RECORD_AUDIO', 'CAMERA'],
       blockedPermissions: [
         'android.permission.ACCESS_BACKGROUND_LOCATION',
-        'android.permission.RECORD_AUDIO',
         'android.permission.READ_PHONE_STATE',
         'android.permission.SYSTEM_ALERT_WINDOW',
         'android.permission.READ_EXTERNAL_STORAGE',
@@ -52,6 +52,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins: [
       ['expo-build-properties', { android: { minSdkVersion: 28, enableProguardInReleaseBuilds: true, enableShrinkResourcesInReleaseBuilds: true } }],
       ['expo-location', { locationWhenInUsePermission: 'Inti Taxi usa tu ubicación para recogerte y para compartirla en una emergencia.', isAndroidBackgroundLocationEnabled: false }],
+      ['expo-audio', { microphonePermission: 'Inti Taxi usa el micrófono solo para las notas de voz del chat del viaje.', enableBackgroundRecording: false, enableBackgroundPlayback: false }],
+      ['expo-image-picker', { cameraPermission: 'Inti Taxi usa la cámara solo para fotos y videos del chat del viaje.', photosPermission: 'Para enviar una foto o video al conductor durante el viaje.', microphonePermission: 'Para grabar el audio de los videos del chat.' }],
       ['expo-secure-store', { configureAndroidBackup: false }],
       ['./plugins/withNetworkSecurity', { cleartextHosts, pinDomains: list(process.env.INTI_PIN_DOMAINS), pins, pinExpiration: process.env.INTI_PIN_EXPIRATION ?? '2027-12-31' }],
       require('./plugins/withNetworkSecurity').withNoBackupRules,

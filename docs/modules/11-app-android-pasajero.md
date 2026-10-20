@@ -31,7 +31,7 @@ Pantallas:
 | **Capturas de pantalla** | `FLAG_SECURE` en las pantallas de código SMS, PIN, SOS y seguridad |
 | **Red** | Nada de HTTP en claro (solo `localhost` en desarrollo); en producción, **certificate pinning** con dos pins obligatorios (actual y de respaldo), o la build no se genera |
 | **Copias de seguridad** | `allowBackup=false` y reglas de extracción de datos: tokens y claves no se copian a la nube ni a otro teléfono |
-| **Permisos mínimos** | Solo ubicación en primer plano. Se bloquean explícitamente ubicación en segundo plano, micrófono, estado del teléfono, superposición y almacenamiento |
+| **Permisos mínimos** | Ubicación en primer plano; micrófono y cámara solo para el chat (módulo 12, se piden al usarlos). Se bloquean explícitamente ubicación en segundo plano, estado del teléfono, superposición y almacenamiento |
 | **Ubicación simulada** | Se detecta (`mocked`) y se avisa al pasajero |
 | **Release** | R8/ProGuard y reducción de recursos activados |
 

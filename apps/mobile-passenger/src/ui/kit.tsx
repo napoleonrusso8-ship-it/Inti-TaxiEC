@@ -4,18 +4,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { errorMessage } from '@intitaxi/mobile-core';
 import { useNav } from '../lib/nav';
 
+/** Paleta "Inti": negro profundo y dorado, tipografía con serifa en títulos. */
 export const C = {
-  bg: '#F6F5F2',
-  card: '#FFFFFF',
-  ink: '#1D232A',
-  muted: '#6B7280',
-  line: '#E3E1DC',
-  brand: '#F2A900',
-  brandInk: '#3A2A00',
-  accent: '#1F4E79',
-  ok: '#13795B',
-  danger: '#B42318',
+  bg: '#0B0B0D',
+  card: '#16161A',
+  card2: '#1E1E24',
+  ink: '#F4F1EA',
+  muted: '#9A978F',
+  line: '#2A2A31',
+  brand: '#D4A84B',
+  brand2: '#F1D38A',
+  brandInk: '#1A1405',
+  accent: '#D4A84B',
+  ok: '#5FBF8F',
+  danger: '#E5484D',
 };
+export const SERIF = 'serif';
 
 export function Screen({ title, children, scroll = true, right }: { title?: string; children: ReactNode; scroll?: boolean; right?: ReactNode }) {
   const nav = useNav();
@@ -53,10 +57,10 @@ export function Card({ children, style }: { children: ReactNode; style?: ViewSty
 }
 
 export function Button({ label, onPress, kind = 'primary', disabled, loading }: { label: string; onPress: () => void; kind?: 'primary' | 'secondary' | 'danger' | 'brand'; disabled?: boolean; loading?: boolean }) {
-  const bg = { primary: C.accent, secondary: '#E8EEF4', danger: C.danger, brand: C.brand }[kind];
-  const fg = kind === 'secondary' ? C.accent : kind === 'brand' ? C.brandInk : '#fff';
+  const bg = { primary: C.brand, secondary: 'transparent', danger: C.danger, brand: C.brand }[kind];
+  const fg = kind === 'secondary' ? C.ink : kind === 'danger' ? '#fff' : C.brandInk;
   return (
-    <Pressable accessibilityRole="button" disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [s.btn, { backgroundColor: bg, opacity: disabled ? 0.5 : pressed ? 0.85 : 1 }]}>
+    <Pressable accessibilityRole="button" disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [s.btn, { backgroundColor: bg, borderWidth: kind === 'secondary' ? 1 : 0, borderColor: C.line, opacity: disabled ? 0.45 : pressed ? 0.85 : 1 }]}>
       {loading ? <ActivityIndicator color={fg} /> : <Text style={[s.btnText, { color: fg }]}>{label}</Text>}
     </Pressable>
   );
@@ -77,7 +81,7 @@ export function Choice<T extends string>({ value, options, onChange }: { value: 
     <View style={s.choice}>
       {options.map((o) => (
         <Pressable key={o.value} accessibilityRole="radio" accessibilityState={{ selected: o.value === value }} onPress={() => onChange(o.value)} style={[s.choiceItem, o.value === value && s.choiceOn]}>
-          <Text style={[s.choiceText, o.value === value && { color: '#fff' }]}>{o.label}</Text>
+          <Text style={[s.choiceText, o.value === value && { color: C.brand2 }]}>{o.label}</Text>
         </Pressable>
       ))}
     </View>
@@ -95,7 +99,7 @@ export function ErrorText({ error }: { error: string | null }) {
 export function Loading({ label }: { label?: string }) {
   return (
     <View style={{ padding: 32, alignItems: 'center', gap: 12 }}>
-      <ActivityIndicator color={C.accent} size="large" />
+      <ActivityIndicator color={C.brand} size="large" />
       {label ? <P muted>{label}</P> : null}
     </View>
   );
@@ -122,22 +126,64 @@ export function useAction() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: C.card },
-  back: { fontSize: 32, lineHeight: 32, color: C.accent, paddingRight: 4 },
-  title: { flex: 1, fontSize: 18, fontWeight: '700', color: C.ink },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.line, backgroundColor: C.bg },
+  back: { fontSize: 32, lineHeight: 32, color: C.brand, paddingRight: 4 },
+  title: { flex: 1, fontSize: 20, color: C.ink, fontFamily: SERIF },
   scroll: { paddingBottom: 40 },
   body: { padding: 16, gap: 14, flexGrow: 1 },
-  h: { fontSize: 22, fontWeight: '700', color: C.ink },
+  h: { fontSize: 26, color: C.ink, fontFamily: SERIF, letterSpacing: 0.3 },
   p: { fontSize: 15, color: C.ink, lineHeight: 21 },
   muted: { color: C.muted, fontSize: 13 },
-  card: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.line, padding: 14, gap: 10 },
-  btn: { borderRadius: 10, paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center', minHeight: 48, justifyContent: 'center' },
-  btnText: { fontSize: 16, fontWeight: '600' },
-  label: { fontSize: 13, color: C.muted },
-  input: { borderWidth: 1, borderColor: C.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16, backgroundColor: '#fff', color: C.ink },
+  card: { backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: C.line, padding: 16, gap: 10 },
+  btn: { borderRadius: 14, paddingVertical: 15, paddingHorizontal: 18, alignItems: 'center', minHeight: 50, justifyContent: 'center' },
+  btnText: { fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
+  label: { fontSize: 12, color: C.muted, letterSpacing: 0.4, textTransform: 'uppercase' },
+  input: { borderWidth: 1, borderColor: C.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 13, fontSize: 16, backgroundColor: C.card2, color: C.ink },
   choice: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  choiceItem: { borderWidth: 1, borderColor: C.line, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: '#fff' },
-  choiceOn: { backgroundColor: C.accent, borderColor: C.accent },
+  choiceItem: { borderWidth: 1, borderColor: C.line, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.card2 },
+  choiceOn: { backgroundColor: 'rgba(212,168,75,0.16)', borderColor: C.brand },
   choiceText: { color: C.ink, fontSize: 14 },
   error: { color: C.danger, fontWeight: '600' },
 });
+
+/** Insignia pequeña dorada (identidad verificada, aliado, conductora…). */
+export function Badge({ children }: { children: ReactNode }) {
+  return (
+    <View style={{ backgroundColor: 'rgba(212,168,75,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start' }}>
+      <Text style={{ color: C.brand2, fontSize: 11, fontWeight: '600' }}>{children}</Text>
+    </View>
+  );
+}
+
+/** Etiqueta de reconocimiento con su conteo (Amable 312). */
+export function Tag({ label, count }: { label: string; count?: number }) {
+  return (
+    <View style={{ borderWidth: 1, borderColor: C.line, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5 }}>
+      <Text style={{ color: '#D8D3C6', fontSize: 12 }}>
+        {label}
+        {count !== undefined ? ` ${count}` : ''}
+      </Text>
+    </View>
+  );
+}
+
+export function Stars({ value }: { value: number | null }) {
+  const n = Math.round(value ?? 0);
+  return <Text style={{ color: C.brand, fontSize: 13 }}>{'★'.repeat(n)}{'☆'.repeat(5 - n)}</Text>;
+}
+
+/** Selector de monto con − / + (ofertas de grúa y alquiler). */
+export function Stepper({ valueCents, onChange, stepCents = 100, minCents, maxCents }: { valueCents: number; onChange: (v: number) => void; stepCents?: number; minCents: number; maxCents: number }) {
+  const btn = (label: string, delta: number) => (
+    <Pressable accessibilityRole="button" accessibilityLabel={label === '−' ? 'Bajar' : 'Subir'} onPress={() => onChange(Math.min(maxCents, Math.max(minCents, valueCents + delta)))} style={{ width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: C.ink, fontSize: 22 }}>{label}</Text>
+    </Pressable>
+  );
+  return (
+    <Row style={{ justifyContent: 'center', gap: 22 }}>
+      {btn('−', -stepCents)}
+      <Text style={{ color: C.ink, fontSize: 40, fontWeight: '300' }}>${(valueCents / 100).toFixed(valueCents % 100 ? 2 : 0)}</Text>
+      {btn('+', stepCents)}
+    </Row>
+  );
+}
