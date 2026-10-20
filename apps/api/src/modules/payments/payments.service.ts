@@ -115,7 +115,8 @@ export class PaymentsService implements OnModuleInit {
     if (exists.rowCount) return;
     const fare = t.final_fare_cents;
     // Taxi Ruta: el pasajero paga la tarifa completa al conductor; la plataforma cobra un fijo por recorrido al terminarlo.
-    const commission = t.type === 'fixed_route' ? 0 : await this.commissions.onDemand(fare);
+    // Bajo demanda: la comisión es solo sobre la tarifa base; el recargo dinámico va íntegro al conductor.
+    const commission = t.type === 'fixed_route' ? 0 : await this.commissions.onDemand(fare - (t.surge_cents ?? 0));
     const driver = fare - commission;
     const paymentId = randomUUID();
     let status: 'approved' | 'declined' | 'cash_collected' = 'cash_collected';

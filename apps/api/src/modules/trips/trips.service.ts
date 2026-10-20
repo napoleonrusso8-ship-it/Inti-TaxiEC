@@ -1,13 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { constantTimeEqual, randomToken, type FieldCipher } from '@intitaxi/crypto';
 import { withTransaction, type Pool, type PoolClient } from '@intitaxi/db';
-import { canTransition, GUAYAQUIL_BBOX, inBBox, isValidLatLng, onDemandFareCents, type LatLng, type TripStatus } from '@intitaxi/domain';
+import { canTransition, fareBreakdown, GUAYAQUIL_BBOX, inBBox, isValidLatLng, onDemandFareCents, surgeMultiplier, type LatLng, type TripStatus } from '@intitaxi/domain';
 import { AppError, AuditService, internalFetch, OneTimeStore, RateLimiter, REDIS, tooManyRequests, type AppRequest, type AttestedDevice } from '@intitaxi/nest-common';
 import type { Redis } from 'ioredis';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { AppConfig } from '../../config.js';
 import type { MapsPort } from '../../infra/maps.js';
 import { CONFIG, FIELD_CIPHER, MAPS, PG_POOL } from '../../tokens.js';
+import { CommissionService } from '../payments/commission.service.js';
 import { MatchingService } from './matching.service.js';
 import { PresenceService } from './presence.service.js';
 import { TripEvents } from './trip-events.js';
@@ -29,6 +30,8 @@ export interface TripRow {
   duration_s: number;
   quoted_fare_cents: number;
   final_fare_cents: number | null;
+  base_fare_cents: number | null;
+  surge_cents: number;
   currency: string;
   party_size: number;
   payment_method: string;
@@ -52,6 +55,10 @@ export interface Quote {
   originLabel?: string;
   destinationLabel?: string;
   fareCents: number;
+  /** Desglose (tarifa dinámica): base + recargo = fareCents. */
+  baseCents?: number;
+  surgeCents?: number;
+  surgeMultiplier?: number;
   distanceM: number;
   durationS: number;
 }
@@ -87,6 +94,7 @@ export class TripsService {
     @Inject(MatchingService) private readonly matching: MatchingService,
     @Inject(TripEvents) private readonly events: TripEvents,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(CommissionService) private readonly commissions: CommissionService,
   ) {}
 
   #assertServiceArea(...pts: LatLng[]) {
@@ -101,13 +109,36 @@ export class TripsService {
     const rl = await this.limiter.hit(`quote:${userId}`, 30, 600);
     if (!rl.allowed) throw tooManyRequests(rl.retryAfterSeconds);
     const route = await this.maps.route(input.origin, input.destination);
-    const fareCents = onDemandFareCents(route.distanceM, route.durationS, {
+    const baseCents = onDemandFareCents(route.distanceM, route.durationS, {
       baseCents: this.config.FARE_BASE_CENTS, perKmCents: this.config.FARE_PER_KM_CENTS, perMinuteCents: this.config.FARE_PER_MIN_CENTS, minimumCents: this.config.FARE_MIN_CENTS,
     });
+    const surge = this.config.SURGE_ENABLED ? surgeMultiplier(await this.#demandSupply(input.origin), this.config.SURGE_MAX) : { multiplier: 1, reason: 'normal' as const };
+    const b = fareBreakdown(baseCents, surge.multiplier, await this.commissions.settings().then((x) => x.on_demand_bps));
     const quoteId = randomToken(18);
-    const q: Quote = { userId, ...input, fareCents, distanceM: route.distanceM, durationS: route.durationS };
+    const q: Quote = { userId, ...input, fareCents: b.totalCents, baseCents, surgeCents: b.surgeCents, surgeMultiplier: surge.multiplier, distanceM: route.distanceM, durationS: route.durationS };
     await this.once.put(`quote:${quoteId}`, q, 300);
-    return { quoteId, fareCents, currency: 'USD', distanceM: route.distanceM, durationS: route.durationS, expiresIn: 300 };
+    return {
+      quoteId,
+      fareCents: b.totalCents,
+      currency: 'USD',
+      distanceM: route.distanceM,
+      durationS: route.durationS,
+      expiresIn: 300,
+      // Transparencia: el pasajero ve el desglose y que el recargo es para el conductor.
+      breakdown: { baseCents, surgeCents: b.surgeCents, multiplier: surge.multiplier, reason: surge.reason, driverEarnsCents: b.driverEarnsCents, priceLocked: true },
+    };
+  }
+
+  /** Pedidos sin conductor y conductores libres en ~3 km del origen (para la tarifa dinámica). */
+  async #demandSupply(origin: LatLng) {
+    const d = 0.027; // ≈ 3 km en Guayaquil
+    const { rows } = await this.pool.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM trips.trips WHERE status IN ('matching', 'no_drivers') AND requested_at > now() - interval '10 minutes'
+         AND origin_lat BETWEEN $1 AND $2 AND origin_lng BETWEEN $3 AND $4`,
+      [origin.lat - d, origin.lat + d, origin.lng - d, origin.lng + d],
+    );
+    const supply = (await this.presence.nearby(origin, 3000, 50)).length;
+    return { demand: rows[0]!.n, supply };
   }
 
   async request(userId: string, device: AttestedDevice, input: { quoteId: string; paymentMethod: 'cash' | 'card' | 'wallet'; idempotencyKey: string } & Record<string, unknown>, req: AppRequest) {
@@ -128,13 +159,13 @@ export class TripsService {
     await withTransaction(this.pool, async (c) => {
       await c.query(
         `INSERT INTO trips.trips (id, requester_user_id, status, origin_lat, origin_lng, origin_label_enc, dest_lat, dest_lng, dest_label_enc,
-           distance_m, duration_s, quoted_fare_cents, payment_method, payment_method_id, pin_enc, search_radius_m)
-         VALUES ($1, $2, 'matching', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+           distance_m, duration_s, quoted_fare_cents, payment_method, payment_method_id, pin_enc, search_radius_m, base_fare_cents, surge_cents, surge_multiplier)
+         VALUES ($1, $2, 'matching', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
         [
           id, userId, quote.origin.lat, quote.origin.lng, quote.originLabel ? await this.cipher.encrypt(quote.originLabel, tripAad.origin(id)) : null,
           quote.destination.lat, quote.destination.lng, quote.destinationLabel ? await this.cipher.encrypt(quote.destinationLabel, tripAad.dest(id)) : null,
           quote.distanceM, quote.durationS, quote.fareCents, input.paymentMethod, (input.paymentMethodId as string) ?? null,
-          await this.cipher.encrypt(pin, tripAad.pin(id)), this.config.MATCHING_RADIUS_M,
+          await this.cipher.encrypt(pin, tripAad.pin(id)), this.config.MATCHING_RADIUS_M, quote.baseCents ?? quote.fareCents, quote.surgeCents ?? 0, quote.surgeMultiplier ?? 1,
         ],
       ).catch((e: { code?: string }) => {
         throw e.code === '23505' ? new AppError(409, 'active_trip_exists', 'Ya tienes un viaje en curso') : e;
@@ -182,7 +213,7 @@ export class TripsService {
       role,
       origin: { lat: Number(t.origin_lat), lng: Number(t.origin_lng), label: t.origin_label_enc ? await this.cipher.decrypt(t.origin_label_enc, tripAad.origin(t.id)) : null },
       destination: { lat: Number(t.dest_lat), lng: Number(t.dest_lng), label: t.dest_label_enc ? await this.cipher.decrypt(t.dest_label_enc, tripAad.dest(t.id)) : null },
-      fare: { quotedCents: t.quoted_fare_cents, finalCents: t.final_fare_cents, currency: t.currency },
+      fare: { quotedCents: t.quoted_fare_cents, finalCents: t.final_fare_cents, currency: t.currency, baseCents: t.base_fare_cents ?? t.quoted_fare_cents, surgeCents: t.surge_cents ?? 0 },
       distanceM: t.distance_m,
       partySize: t.party_size,
       paymentMethod: t.payment_method,

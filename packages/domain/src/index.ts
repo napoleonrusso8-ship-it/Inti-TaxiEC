@@ -5,3 +5,4 @@ export * from './pricing.js';
 export * from './trip-state.js';
 export * from './identity-docs.js';
 export * from './fixed-route.js';
+export * from './surge.js';

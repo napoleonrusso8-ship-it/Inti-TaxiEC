@@ -47,6 +47,9 @@ const schema = z
     FARE_PER_KM_CENTS: z.coerce.number().int().min(0).default(40),
     FARE_PER_MIN_CENTS: z.coerce.number().int().min(0).default(10),
     FARE_MIN_CENTS: z.coerce.number().int().min(0).default(200),
+    /** Tarifa dinámica (activable por ciudad/despliegue: la tarifa de taxi la regula la ATM, ver revisión legal). */
+    SURGE_ENABLED: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+    SURGE_MAX: z.coerce.number().min(1).max(2).default(1.5),
 
     MATCHING_OFFER_TTL_SECONDS: z.coerce.number().int().min(5).max(60).default(15),
     MATCHING_RADIUS_M: z.coerce.number().int().min(500).max(20000).default(5000),
