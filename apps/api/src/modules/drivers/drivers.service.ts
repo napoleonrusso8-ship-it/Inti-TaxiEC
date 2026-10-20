@@ -7,6 +7,7 @@ import type { AppConfig } from '../../config.js';
 import { inspectFile, MAX_DOCUMENT_BYTES } from '../../infra/file-inspection.js';
 import { sha256Of, type StoragePort } from '../../infra/storage.js';
 import { BLIND_INDEX, CONFIG, FIELD_CIPHER, PG_POOL, STORAGE } from '../../tokens.js';
+import { SanctionsService } from '../trust/sanctions.service.js';
 import { KycService } from '../kyc/kyc.service.js';
 import { eligibilityIssues, normalizePlate, todayInGuayaquil, type DocState } from './eligibility.js';
 
@@ -40,6 +41,7 @@ export class DriversService {
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
     @Inject(KycService) private readonly kyc: KycService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(SanctionsService) private readonly sanctions: SanctionsService,
   ) {}
 
   async apply(userId: string, input: { licenseNumber: string; licenseCategory: string; licenseExpiresOn: string }, req: AppRequest) {
@@ -209,10 +211,14 @@ export class DriversService {
         uploadStatus: d.upload_status,
         expiresOn: d.expires_on,
       }));
-    return eligibilityIssues(
+    const issues = eligibilityIssues(
       { today: todayInGuayaquil(), kycApproved: await this.kyc.isApproved(userId), profileStatus: p.status, licenseExpiresOn: p.license_expires_on, vehicles: await this.vehicles(userId), docs },
       { forApproval: opts.forApproval },
     );
+    // Sanción vigente por un reporte comprobado (suspensión o expulsión).
+    const sanction = await this.sanctions.active(userId, 'driver');
+    if (sanction) issues.push(sanction.type === 'ban' ? 'cuenta dada de baja' : 'cuenta suspendida por un reporte comprobado');
+    return issues;
   }
 
   async view(userId: string) {

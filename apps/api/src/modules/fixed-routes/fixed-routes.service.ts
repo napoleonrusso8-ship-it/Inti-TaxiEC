@@ -10,6 +10,7 @@ import { DriversService } from '../drivers/drivers.service.js';
 import { KycService } from '../kyc/kyc.service.js';
 import { PresenceService } from '../trips/presence.service.js';
 import { CommissionService } from '../payments/commission.service.js';
+import { SanctionsService } from '../trust/sanctions.service.js';
 import { postLedger } from '../payments/ledger.js';
 import { TripEvents } from '../trips/trip-events.js';
 import { TripTrackingService } from '../trips/trip-tracking.service.js';
@@ -49,6 +50,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(CommissionService) private readonly commissions: CommissionService,
+    @Inject(SanctionsService) private readonly sanctions: SanctionsService,
   ) {}
 
   onModuleInit() {
@@ -207,6 +209,7 @@ export class FixedRoutesService implements OnModuleInit, OnModuleDestroy {
     const rl = await this.limiter.hit(`route-book:${userId}`, 10, 3600);
     if (!rl.allowed) throw tooManyRequests(rl.retryAfterSeconds);
     if (input.paymentMethod !== 'cash' && device.flags.includes('device_integrity_basic_only')) throw new AppError(403, 'payment_method_not_allowed', 'En este dispositivo solo está disponible el pago en efectivo');
+    await this.sanctions.assertAllowed(userId, 'passenger');
     const active = await this.pool.query(`SELECT 1 FROM fixed_routes.bookings WHERE requester_user_id = $1 AND status IN ('reserved', 'boarded')`, [userId]);
     if (active.rowCount) throw new AppError(409, 'active_booking_exists', 'Ya tienes una reserva activa en Taxi Ruta');
     const tripId = randomUUID();

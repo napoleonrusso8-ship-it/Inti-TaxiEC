@@ -20,7 +20,7 @@ export const VIEWS = [
   {
     id: 'resumen',
     title: 'Resumen',
-    roles: ['super_admin', 'driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo'],
+    roles: ['super_admin', 'driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo', 'trust_safety'],
     async render(s, root) {
       const m = await s.call('api', 'GET', '/v1/admin/metrics');
       const stat = (label, value, warn) => h('div', { class: `stat ${warn ? 'warn' : ''}` }, h('span', { class: 'value' }, String(value)), h('span', { class: 'label' }, label));

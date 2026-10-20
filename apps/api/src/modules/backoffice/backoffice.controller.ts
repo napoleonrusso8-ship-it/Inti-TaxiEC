@@ -7,7 +7,7 @@ import { BackofficeService } from './backoffice.service.js';
 import { DisputesService } from './disputes.service.js';
 
 const text = (min: number, max: number) => z.string().trim().min(min).max(max).regex(/^[^<>]*$/);
-const ALL_ROLES = ['super_admin', 'driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo'] as const;
+const ALL_ROLES = ['super_admin', 'driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo', 'trust_safety'] as const;
 
 /** Reclamos de usuarios (pasajero o conductor del viaje). */
 @Controller('v1')

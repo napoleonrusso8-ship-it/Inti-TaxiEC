@@ -10,6 +10,7 @@ import type { MapsPort } from '../../infra/maps.js';
 import { CONFIG, FIELD_CIPHER, MAPS, PG_POOL } from '../../tokens.js';
 import { CommissionService } from '../payments/commission.service.js';
 import { postLedger } from '../payments/ledger.js';
+import { SanctionsService } from '../trust/sanctions.service.js';
 import { MatchingService } from './matching.service.js';
 import { PresenceService } from './presence.service.js';
 import { TripEvents } from './trip-events.js';
@@ -97,6 +98,7 @@ export class TripsService {
     @Inject(TripEvents) private readonly events: TripEvents,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(CommissionService) private readonly commissions: CommissionService,
+    @Inject(SanctionsService) private readonly sanctions: SanctionsService,
   ) {}
 
   #assertServiceArea(...pts: LatLng[]) {
@@ -153,6 +155,7 @@ export class TripsService {
     if (input.paymentMethod !== 'cash' && device.flags.includes('device_integrity_basic_only')) {
       throw new AppError(403, 'payment_method_not_allowed', 'En este dispositivo solo está disponible el pago en efectivo');
     }
+    await this.sanctions.assertAllowed(userId, 'passenger');
     const quote = await this.once.take<Quote>(`quote:${input.quoteId}`);
     if (!quote || quote.userId !== userId) throw new AppError(409, 'quote_expired', 'La cotización venció; vuelve a cotizar');
 

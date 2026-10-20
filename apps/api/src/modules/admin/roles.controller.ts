@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { PG_POOL } from '../../tokens.js';
 import { AdminGuard, AdminRoles, AdminWrite } from './admin.guard.js';
 
-const Role = z.enum(['super_admin', 'driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo']);
+const Role = z.enum(['super_admin', 'driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo', 'trust_safety']);
 
 @Controller('v1/admin')
 @UseGuards(AccessTokenGuard, AdminGuard)
@@ -18,7 +18,7 @@ export class AdminRolesController {
   ) {}
 
   @Get('me')
-  @AdminRoles('super_admin', 'driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo')
+  @AdminRoles('super_admin', 'driver_reviewer', 'support', 'fraud_analyst', 'sos_operator', 'route_manager', 'auditor', 'dpo', 'trust_safety')
   me(@Req() req: AppRequest & { adminRoles?: string[] }, @Auth() auth: AuthContext) {
     return { userId: auth.userId, roles: req.adminRoles };
   }

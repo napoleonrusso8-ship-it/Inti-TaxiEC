@@ -5,7 +5,7 @@ import type { Pool } from '@intitaxi/db';
 import { AppError, type AppRequest } from '@intitaxi/nest-common';
 import { PG_POOL } from '../../tokens.js';
 
-export type AdminRole = 'super_admin' | 'driver_reviewer' | 'support' | 'fraud_analyst' | 'sos_operator' | 'route_manager' | 'auditor' | 'dpo';
+export type AdminRole = 'super_admin' | 'driver_reviewer' | 'support' | 'fraud_analyst' | 'sos_operator' | 'route_manager' | 'auditor' | 'dpo' | 'trust_safety';
 export const ADMIN_CLIENT = 'intitaxi-admin';
 
 const ROLES_KEY = 'intitaxi:admin-roles';
