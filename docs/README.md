@@ -10,7 +10,7 @@
 | [05-endpoints.md](05-endpoints.md) | Lista de endpoints REST/WebSocket con autorización |
 | [06-decisiones-pendientes.md](06-decisiones-pendientes.md) | Decisiones que requieren aprobación y partes que requieren revisión legal |
 
-> **¿Primera vez?** Empieza por [COMO-EJECUTAR.md](COMO-EJECUTAR.md): instalar, arrancar los servidores e instalar la app en Android.
+> **¿Primera vez?** Empieza por [COMO-EJECUTAR.md](COMO-EJECUTAR.md): instalar, arrancar los servidores e instalar la app en Android. Todo lo que hace la app, en un solo texto: [APP-COMPLETA.md](APP-COMPLETA.md).
 
 ## Módulos (implementación)
 
