@@ -14,7 +14,7 @@
     "@intitaxi/auth-verifier": "workspace:*",
     "@intitaxi/crypto": "workspace:*",
     "ioredis": "5.11.1",
-    "jose": "6.2.12",
+    "jose": "6.2.13",
     "leaflet": "1.9.4",
     "ws": "8.18.3",
     "zod": "3.25.76"
