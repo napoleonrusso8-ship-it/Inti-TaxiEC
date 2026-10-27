@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@intitaxi/auth-client": "workspace:*",
-    "jose": "6.2.12",
+    "jose": "6.2.13",
     "ws": "8.18.3"
   },
   "devDependencies": {

@@ -22,7 +22,7 @@
     "@simplewebauthn/server": "13.3.3",
     "google-auth-library": "9.15.1",
     "ioredis": "5.11.1",
-    "jose": "6.2.12",
+    "jose": "6.2.13",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "zod": "3.25.76",
