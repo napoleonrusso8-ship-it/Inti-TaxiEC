@@ -20,7 +20,7 @@
     "@nestjs/core": "11.2.7",
     "@nestjs/platform-express": "11.2.7",
     "@simplewebauthn/server": "13.3.3",
-    "google-auth-library": "9.15.1",
+    "google-auth-library": "11.3.1",
     "ioredis": "5.11.1",
     "jose": "6.2.12",
     "reflect-metadata": "0.2.2",
